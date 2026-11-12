@@ -1,0 +1,1280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Operation Map</title>
+<style>
+:root{
+  --bg:#071019; --surface:#101c27; --surface2:#142533; --overlay:#0a1620;
+  --border:#314858; --border-dim:#263e4c; --gold:#8cbed0; --gold-hi:#b8eeff;
+  --ink:#edf6fa; --ink-dim:#a7bfcc; --ink-faint:#7893a2;
+  --blue:#63cfff; --green:#56d5c6; --red:#f08a80; --amber:#9ad6ff;
+  --success:#64d7c6; --danger:#f08a80; --warn:#f0c17c; --info:#63cfff;
+  --serif:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;background:var(--bg);font-family:var(--serif);color:var(--ink)}
+button,input,select{font:inherit}
+button{touch-action:manipulation}
+#stage{position:absolute;inset:0;background:#081723;overflow:hidden;user-select:none;-webkit-user-select:none}
+#map{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+#map.panning{cursor:grabbing} #map.adding{cursor:crosshair}
+.corner{display:none}
+.panel{position:absolute;background:linear-gradient(155deg,rgba(19,34,46,.97),rgba(9,20,30,.97));border:1px solid rgba(116,166,185,.25);border-radius:8px;box-shadow:0 14px 42px rgba(0,5,12,.36),inset 0 1px rgba(210,241,255,.05);z-index:10;backdrop-filter:blur(14px)}
+.phead{display:flex;align-items:center;gap:9px;min-height:48px;padding:0 16px;font-size:10px;font-weight:750;letter-spacing:.15em;text-transform:uppercase;color:#d8ebf3;border-bottom:1px solid rgba(116,166,185,.16)}
+.phead::before{content:"";width:3px;height:13px;background:#60d4fa;box-shadow:0 0 12px #46c7f6;border-radius:2px;flex:none}
+.phead::after{content:"";width:5px;height:5px;background:#54d7ca;box-shadow:0 0 9px #54d7ca;border-radius:50%;margin-left:auto;flex:none}
+.scroll{overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#3b6071 transparent}
+.scroll::-webkit-scrollbar{width:7px}.scroll::-webkit-scrollbar-thumb{background:#3b6071;border-radius:6px;border:2px solid #10202a}
+/* Objective rail */
+#objectives{top:88px;left:20px;width:284px;display:flex;flex-direction:column;max-height:calc(100% - 290px)}
+#objectives .phead{flex:none}
+#objList{list-style:none;overflow-y:auto;overscroll-behavior:contain;padding:8px;min-height:0;scrollbar-width:thin;scrollbar-color:#3b6071 transparent}
+#objList li{display:flex;align-items:center;gap:10px;min-height:42px;padding:9px 8px;font-size:12px;line-height:1.35;color:var(--ink-dim);border-bottom:1px solid rgba(130,177,193,.09);border-radius:4px;cursor:pointer;transition:background 150ms ease}
+#objList li:hover,#objList li:focus-visible{background:rgba(87,188,224,.1);outline:none}
+#objList li .oi{width:20px;height:20px;display:grid;place-items:center;border:1px solid #526b79;border-radius:50%;color:#96acb8;flex:none;font-size:11px}
+#objList li.active{color:#edf8fc} #objList li.active .oi{border-color:#f08a80;color:#f3a69e}
+#objList li.done{color:#98c9c4} #objList li.done .oi{border-color:#51c4b7;color:#67dfce;background:rgba(53,167,156,.1)}
+#objList li.done .ot{text-decoration:line-through;text-decoration-color:rgba(100,215,198,.45)}
+#objList li .ot{overflow-wrap:anywhere;flex:1;min-width:0} #objList li .op{font:10px var(--mono);color:#7995a4;flex:none}
+#objList li.flash{animation:objFlash 1.2s ease}@keyframes objFlash{0%{background:rgba(100,215,198,.28)}100%{background:transparent}}
+.objSub{padding:6px 16px 10px;color:var(--ink-faint);font-size:10px;line-height:1.55;flex:none}
+.objAdd{padding:0 12px 12px;flex:none}.objAdd .btn{width:100%}
+/* Header */
+#topbar{position:absolute;top:0;left:0;right:0;min-height:68px;display:flex;align-items:center;gap:10px;padding:0 20px;z-index:12;background:linear-gradient(180deg,rgba(8,17,26,.98),rgba(11,24,34,.95));border-bottom:1px solid rgba(117,169,189,.22);box-shadow:0 8px 30px rgba(0,0,0,.22)}
+.brand{display:flex;align-items:center;gap:11px;min-width:0}.brand-mark{display:grid;place-items:center;width:32px;height:32px;border:1px solid #4d9fc0;border-radius:5px;color:#7ce0ff;font:700 15px var(--mono);box-shadow:inset 0 0 14px rgba(65,175,218,.09)}
+.brand-copy{min-width:0}.brand-kicker{display:block;color:#7799aa;font-size:9px;font-weight:700;letter-spacing:.16em;white-space:nowrap}.brand-name{display:block;max-width:28vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#f0f8fb;font-size:14px;font-weight:700;letter-spacing:.01em;margin-top:3px}
+.header-spacer{flex:1}.header-status{display:flex;align-items:center;gap:7px;color:#86a6b4;font:9px var(--mono);letter-spacing:.12em;white-space:nowrap;margin-right:12px}.header-status::before{content:"";width:6px;height:6px;border-radius:50%;background:#59d8c4;box-shadow:0 0 10px #59d8c4}
+.pill{display:flex;align-items:center;gap:8px;min-height:36px;padding:0 12px;background:#142631;border:1px solid #2b4351;border-radius:5px;color:#e9f7fb;font:700 13px var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.pill small{font:700 9px var(--serif);letter-spacing:.11em;color:#7899a9}.pill svg{color:#6ed7f8}
+.pill.pulse{animation:pillPulse .3s ease-out}@keyframes pillPulse{40%{transform:scale(1.05)}}
+#backBtn,#soundBtn{width:36px;height:36px;display:grid;place-items:center;flex:none;background:#142631;border:1px solid #2c4655;border-radius:5px;color:#b1d5e2;cursor:pointer;transition:background 150ms ease,border-color 150ms ease,color 150ms ease}
+#backBtn{font-size:19px;line-height:1} #backBtn:hover,#soundBtn:hover{border-color:#68c9ec;background:#193645;color:#e9faff}
+#soundBtn .slash{display:none} #soundBtn.muted{color:#6d8794} #soundBtn.muted .slash{display:block} #soundBtn.muted .waves{display:none}
+.map-overline{position:absolute;top:88px;left:50%;transform:translateX(-50%);z-index:3;pointer-events:none;color:#9ac9d8;font:10px var(--mono);letter-spacing:.18em;text-transform:uppercase;text-shadow:0 2px 8px #061019;white-space:nowrap}
+.map-overline span{color:#55c9e9;margin-right:8px}
+/* Command panel */
+#tools{top:88px;right:20px;bottom:20px;width:292px;display:flex;flex-direction:column;min-height:0}
+#tools .tbody{padding:16px;overflow-y:auto;flex:1}
+#mobileToolsBtn{display:none}
+.sec{margin-bottom:20px}.sec:last-child{margin-bottom:0}
+.sec h3{font-size:10px;letter-spacing:.13em;font-weight:750;text-transform:uppercase;color:#83a6b6;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.sec h3::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,rgba(116,166,185,.25),transparent)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:36px;padding:8px 10px;font-size:11px;font-weight:650;color:#d3e4eb;background:#192d39;border:1px solid #34505e;border-radius:5px;cursor:pointer;letter-spacing:.01em;transition:background 150ms ease,border-color 150ms ease,color 150ms ease,transform 120ms ease}
+.btn:hover{border-color:#72cde9;color:#fff;background:#213e4c}.btn:active,#backBtn:active,#soundBtn:active{transform:scale(.97)}
+.btn:disabled{opacity:.4;cursor:not-allowed}.btn.primary{background:#127c9e;color:#f2fdff;border-color:#4cb9da;font-weight:750}.btn.primary:hover{background:#1898bd;border-color:#8de6ff}
+.btn.danger{border-color:#704844;color:#f0aba4}.btn.danger:hover{background:#422c2e;border-color:#e58b82}
+.btn.active{background:#214b5b;border-color:#65cdec;color:#dff9ff;box-shadow:inset 0 0 15px rgba(79,195,230,.09)}
+.btn.glowHint{box-shadow:0 0 16px rgba(85,208,246,.35)}
+.modeRow,.cBtns{display:grid;grid-template-columns:1fr 1fr;gap:8px}.cBtns{margin-top:10px}
+label.fld{display:block;font-size:10px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:6px}
+input[type=text],select{width:100%;min-height:36px;background:#0b1a24;border:1px solid #304b5a;border-radius:4px;color:var(--ink);padding:7px 10px;font-size:12px}
+select{cursor:pointer}input[type=text]:focus,select:focus-visible{outline:2px solid rgba(96,212,250,.5);outline-offset:1px;border-color:#60d4fa}
+input[type=text]:disabled{opacity:.5;cursor:not-allowed}
+#charterEmpty{font-size:11px;color:var(--ink-faint);padding:12px;line-height:1.55;border:1px dashed #35505e;border-radius:5px;background:rgba(5,17,25,.24)}
+#charterBody{display:none}#charter.has #charterBody{display:block}#charter.has #charterEmpty{display:none}
+#cityMeta{font-size:10px;color:var(--ink-faint);margin-top:8px;letter-spacing:.025em;font-variant-numeric:tabular-nums;line-height:1.6}
+.ctl{display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:11px;color:var(--ink-dim)}.ctl label{width:88px;flex:none}.ctl output{width:33px;text-align:right;color:#8bc7db;font:10px var(--mono);flex:none}
+input[type=range]{flex:1;min-width:0;-webkit-appearance:none;appearance:none;height:22px;background:transparent;cursor:pointer}
+input[type=range]::-webkit-slider-runnable-track{height:3px;background:#335767;border-radius:2px}input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;margin-top:-5px;border-radius:50%;background:#a2e8fb;border:2px solid #23586c;box-shadow:0 0 7px rgba(74,200,240,.3)}
+input[type=range]::-moz-range-track{height:3px;background:#335767;border-radius:2px}input[type=range]::-moz-range-thumb{width:11px;height:11px;border-radius:50%;background:#a2e8fb;border:2px solid #23586c}
+.tglGrid{display:grid;grid-template-columns:1fr 1fr;gap:2px 14px;margin:12px 0}.tgl{display:flex;align-items:center;justify-content:space-between;min-height:28px;font-size:11px;color:var(--ink-dim);cursor:pointer}
+.tgl input{position:absolute;opacity:0;pointer-events:none}.tgl .sw{width:30px;height:16px;flex:none;background:#0a1a24;border:1px solid #3b5562;border-radius:9px;position:relative;transition:background 150ms ease,border-color 150ms ease}.tgl .sw::after{content:"";position:absolute;top:2px;left:2px;width:10px;height:10px;border-radius:50%;background:#78909b;transition:transform 150ms ease,background 150ms ease}
+.tgl input:checked+.sw{background:#116981;border-color:#3fa5bf}.tgl input:checked+.sw::after{transform:translateX(14px);background:#d2f8ff}.tgl input:focus-visible+.sw{outline:2px solid #a2e8fb;outline-offset:2px}
+#zoomCluster{position:absolute;right:326px;bottom:20px;display:flex;flex-direction:column;gap:5px;z-index:10}#zoomCluster .btn{width:38px;height:38px;font-size:18px;padding:0;background:rgba(15,31,42,.96)}
+#minimapPanel{left:20px;bottom:20px;padding:10px}#minimapPanel::before{content:"OVERVIEW / NAV";display:block;margin-bottom:7px;color:#8baab9;font:700 9px var(--serif);letter-spacing:.14em}
+#minimap{display:block;width:196px;height:110px;background:#0a1a27;border:1px solid #395463;border-radius:3px;cursor:pointer;touch-action:none}#miniCoords{margin-top:7px;color:#86a6b5;font:10px var(--mono);text-align:center;font-variant-numeric:tabular-nums}
+#hint{position:absolute;left:50%;bottom:22px;transform:translateX(-50%);max-width:calc(100% - 680px);padding:9px 13px;font-size:10px;line-height:1.4;color:#a5c0cc;background:rgba(11,26,36,.9);border:1px solid rgba(107,161,181,.25);border-radius:5px;z-index:9;text-align:center}
+#hint kbd{font:10px var(--mono);color:#ddf6fd;border:1px solid #3a5967;padding:1px 4px;margin:0 1px;background:#142b37;border-radius:3px}
+#tooltip{position:fixed;z-index:60;pointer-events:none;opacity:0;transform:translateY(3px);transition:opacity .12s,transform .12s;background:rgba(9,24,34,.98);border:1px solid #476c7c;border-radius:5px;padding:10px 12px;max-width:250px;box-shadow:0 10px 28px rgba(0,0,0,.4)}#tooltip.show{opacity:1;transform:none}
+#tooltip .tn{font-size:12px;font-weight:700;color:#effbff;margin-bottom:5px;overflow-wrap:anywhere}#tooltip .tm{font-size:10px;color:var(--ink-dim);display:flex;align-items:center;gap:7px}#tooltip .tm .dot{width:7px;height:7px;border-radius:50%}#tooltip .th{font-size:10px;color:var(--ink-faint);margin-top:5px}
+#toasts{position:absolute;left:50%;bottom:68px;transform:translateX(-50%);display:flex;flex-direction:column-reverse;gap:7px;z-index:55;align-items:center;pointer-events:none;width:max-content;max-width:90%}.toast{display:flex;align-items:center;gap:9px;padding:10px 13px;font-size:11px;line-height:1.4;color:var(--ink);background:#122633;border:1px solid #3a5b6a;border-left:3px solid var(--info);border-radius:4px;box-shadow:0 8px 22px rgba(0,0,0,.4);max-width:100%}.toast.success{border-left-color:var(--success)}.toast.danger{border-left-color:var(--danger)}.toast.warn{border-left-color:var(--warn)}.toast .ti{font-size:13px}.toast.out{opacity:0;transition:opacity .2s}
+#renameInput{position:fixed;z-index:70;display:none;width:196px;padding:8px 10px;font-size:13px;text-align:center;color:#e8faff;background:#0c202c;border:1px solid #70d8f7;border-radius:5px;box-shadow:0 0 0 3px rgba(96,212,250,.18),0 8px 24px rgba(0,0,0,.55)}
+button:focus-visible,.btn:focus-visible,#objList li:focus-visible{outline:2px solid #9ae8ff;outline-offset:2px}
+@media(max-width:1100px){#tools{width:260px}#zoomCluster{right:294px}#objectives{width:250px}#hint{max-width:calc(100% - 610px)}}
+@media(max-width:760px){
+ #topbar{min-height:58px;padding:0 10px;gap:7px}.brand-mark{display:none}.brand-copy{max-width:25vw;overflow:hidden}.brand-kicker{font-size:8px;overflow:hidden;text-overflow:ellipsis}.brand-name{font-size:12px;max-width:100%}.header-status{display:none}.pill{min-height:34px;padding:0 7px;font-size:11px;gap:4px}.pill small{font-size:8px;letter-spacing:.04em}.pill svg{width:13px;height:13px}#backBtn,#soundBtn{width:34px;height:34px}
+ #objectives{top:69px;left:10px;width:min(58vw,245px);max-height:30dvh}.phead{min-height:42px;padding:0 12px;font-size:9px}#objList{padding:4px 6px}#objList li{min-height:36px;padding:7px 5px;font-size:11px;gap:7px}#objList li .oi{width:18px;height:18px}.objSub{display:none}.objAdd{padding:3px 8px 8px}.objAdd .btn{min-height:34px;font-size:10px}
+ #tools{top:auto;left:10px;right:10px;bottom:10px;width:auto;height:46px;max-height:none;overflow:hidden}#tools .phead{min-height:44px;border-bottom:0}#tools .phead::after{display:none}#mobileToolsBtn{display:block;margin-left:auto;border:0;background:none;color:#a4cedd;font-size:10px;font-weight:700;letter-spacing:.07em;padding:10px;cursor:pointer}#tools .tbody{display:none;padding:12px 14px 18px}#tools.expanded{height:min(52dvh,490px)}#tools.expanded .phead{border-bottom:1px solid rgba(116,166,185,.16)}#tools.expanded .tbody{display:block;min-height:0}
+ #minimapPanel{left:10px;bottom:68px;padding:7px}#minimapPanel::before{font-size:8px;margin-bottom:5px}#minimap{width:125px;height:70px}#miniCoords{display:none}#zoomCluster{right:10px;bottom:68px;gap:4px}#zoomCluster .btn{width:36px;height:36px}
+ #tools.expanded~#minimapPanel,#tools.expanded~#zoomCluster{bottom:calc(min(52dvh,490px) + 20px)}#hint,.map-overline{display:none}#toasts{bottom:66px}#tools.expanded~#toasts{bottom:calc(min(52dvh,490px) + 20px)}
+ #stage.placing #hint{display:block;top:69px;right:10px;bottom:auto;left:auto;transform:none;width:min(37vw,160px);max-width:none;text-align:left;padding:8px}
+}
+@media(max-width:380px){.brand-kicker{display:none}.brand-name{max-width:21vw}.pill{padding:0 5px}#objPill small{display:none}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important;transition-duration:.01ms!important}}
+
+<style>
+/* plan of attack + targeting system */
+#planBox{width:100%;min-height:78px;background:var(--overlay);border:1px solid var(--border-dim);color:var(--ink);padding:7px 8px;font-size:12.5px;font-family:var(--serif);line-height:1.55;resize:vertical;transition:.15s}
+#planBox:focus{outline:none;border-color:var(--gold-hi);box-shadow:0 0 0 2px rgba(240,201,110,.18)}
+#planBox:disabled{opacity:.55}
+.target-reticle{animation:tpulse 1.4s ease-in-out infinite;pointer-events:none;transform-box:fill-box;transform-origin:center}
+@keyframes tpulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.25;transform:scale(1.1)}}
+</style>
+</head>
+<body>
+<div id="stage">
+<svg id="map" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" data-atmo="day" role="application" aria-label="Operation map">
+<style>
+#map{--glow:.8;font-family:Inter,ui-sans-serif,system-ui,sans-serif}
+#map text{pointer-events:none}
+#terrain{filter:url(#tacticalTerrain)}
+#terrain .smoke,#terrain .ember,#terrain .cloud{opacity:0;animation:none}
+.region-label{fill:#86b6c9!important;opacity:.66;font-family:ui-monospace,monospace;font-style:normal;font-size:15px!important;letter-spacing:2px;text-transform:uppercase;paint-order:stroke;stroke:#102938;stroke-width:3px;font-weight:500}
+.city{cursor:pointer;outline:none}.city .hit{fill:transparent;stroke:none;pointer-events:all}.city .hover-glow{opacity:0;transition:opacity .15s}.city:hover .hover-glow,.city.selected .hover-glow,.city:focus-visible .hover-glow{opacity:var(--glow)}
+.city .anim{transition:filter .15s}.city:hover .anim,.city:focus-visible .anim{filter:brightness(1.2)}.city.dragging{opacity:.9;cursor:grabbing}
+.city .sel-ring{display:none;fill:none;stroke:#a9edff;stroke-width:2;stroke-dasharray:6 5}.city.selected .sel-ring,.city:focus-visible .sel-ring{display:block}.city:focus-visible .sel-ring{stroke:#fff;stroke-width:3}
+.city-label{fill:#e7f8ff;paint-order:stroke;stroke:#0b202c;stroke-width:4px;stroke-linejoin:round;letter-spacing:.3px;text-anchor:middle;font-weight:700}
+.route{fill:none;stroke-width:2.2;stroke-dasharray:9 7;opacity:.9}.road-o{fill:none;stroke:#102b39;stroke-width:7;stroke-linecap:round;opacity:.8}.road-i{fill:none;stroke:#467182;stroke-width:3;stroke-linecap:round;opacity:.8}
+.lights{opacity:0}.ship-b,.banner-wave,.star-f,.lava,.cloud,.quest-pulse{animation:none}
+#atmoTerrain,#atmoGlobal{pointer-events:none;transition:opacity .25s,fill .25s;opacity:0}
+#map[data-atmo=dusk] #atmoTerrain{fill:#627da5;opacity:.20;mix-blend-mode:soft-light}#map[data-atmo=dusk] #atmoGlobal{fill:#243959;opacity:.14;mix-blend-mode:multiply}
+#map[data-atmo=night] #atmoTerrain{fill:#304e70;opacity:.38;mix-blend-mode:multiply}#map[data-atmo=night] #atmoGlobal{fill:#14283f;opacity:.24;mix-blend-mode:multiply}
+#map.hide-banners .banner{display:none}#map.hide-labels .city-label{display:none}#ghost{pointer-events:none;opacity:.7}#ghost .sel-ring{display:block;fill:none;stroke:#a9edff;stroke-width:2;stroke-dasharray:6 5}
+
+</style>
+<defs>
+  <filter id="tacticalTerrain" x="-10%" y="-10%" width="120%" height="120%" color-interpolation-filters="sRGB">
+    <feColorMatrix type="saturate" values="0"/>
+    <feComponentTransfer><feFuncR type="table" tableValues="0.025 0.11 0.24"/><feFuncG type="table" tableValues="0.07 0.20 0.35"/><feFuncB type="table" tableValues="0.11 0.28 0.45"/></feComponentTransfer>
+  </filter>
+  <linearGradient id="oceanGrad" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#0b2736"/><stop offset=".45" stop-color="#0b2130"/><stop offset="1" stop-color="#071721"/>
+  </linearGradient>
+  <linearGradient id="landGrad" x1="0" y1="0" x2=".7" y2="1">
+    <stop offset="0" stop-color="#79895c"/><stop offset=".55" stop-color="#68794e"/><stop offset="1" stop-color="#5c6f46"/>
+  </linearGradient>
+  <linearGradient id="wastesGrad" x1="0" y1="0" x2=".4" y2="1">
+    <stop offset="0" stop-color="#c6b47b"/><stop offset="1" stop-color="#a3905c"/>
+  </linearGradient>
+  <linearGradient id="ashGrad" x1="0" y1="0" x2=".3" y2="1">
+    <stop offset="0" stop-color="#54422f"/><stop offset=".5" stop-color="#3a2d22"/><stop offset="1" stop-color="#211a14"/>
+  </linearGradient>
+  <linearGradient id="mtnGrad" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#a2a49b"/><stop offset="1" stop-color="#686a63"/>
+  </linearGradient>
+  <linearGradient id="mtnAshGrad" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#5c4a3a"/><stop offset="1" stop-color="#2c231c"/>
+  </linearGradient>
+  <radialGradient id="goldGrad"><stop offset="0" stop-color="#ffe9a8"/><stop offset="1" stop-color="#d9a441"/></radialGradient>
+  <linearGradient id="lavaGrad" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#ffd27a"/><stop offset=".5" stop-color="#ff7a29"/><stop offset="1" stop-color="#d64541"/>
+  </linearGradient>
+  <linearGradient id="ban-blue" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6cc0f0"/><stop offset="1" stop-color="#2b6ea8"/></linearGradient>
+  <linearGradient id="ban-green" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7ed491"/><stop offset="1" stop-color="#2f7a3d"/></linearGradient>
+  <linearGradient id="ban-red" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f07a6a"/><stop offset="1" stop-color="#8e2a24"/></linearGradient>
+  <linearGradient id="ban-gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd27a"/><stop offset="1" stop-color="#a87524"/></linearGradient>
+  <radialGradient id="glowGrad"><stop offset="0" stop-color="#9deaff" stop-opacity=".5"/><stop offset=".6" stop-color="#5dd6ff" stop-opacity=".22"/><stop offset="1" stop-color="#5dd6ff" stop-opacity="0"/></radialGradient>
+  <radialGradient id="cloudGrad"><stop offset="0" stop-color="#000" stop-opacity=".12"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>
+  <filter id="blur6" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="6"/></filter>
+  <filter id="softShadow" x="-40%" y="-40%" width="180%" height="180%"><feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#000" flood-opacity=".45"/></filter>
+  <filter id="goldGlow" x="-80%" y="-80%" width="260%" height="260%"><feDropShadow dx="0" dy="0" stdDeviation="4" flood-color="#ffd27a" flood-opacity=".85"/></filter>
+  <filter id="lavaGlow" x="-60%" y="-60%" width="220%" height="220%"><feDropShadow dx="0" dy="0" stdDeviation="5" flood-color="#ff7a29" flood-opacity=".7"/></filter>
+  <pattern id="grain" width="180" height="180" patternUnits="userSpaceOnUse"><image id="grainImg" width="180" height="180"/></pattern>
+  <pattern id="gridPattern" width="100" height="100" patternUnits="userSpaceOnUse"><path d="M100,0 H0 V100" fill="none" stroke="#8ed8f0" stroke-opacity=".19" stroke-width="1"/></pattern>
+  <marker id="arr-blue" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#64d7c6"/></marker>
+  <marker id="arr-red" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#f08a80"/></marker>
+  <path id="landShape" d=""/>
+  <clipPath id="landClip"><use href="#landShape"/></clipPath>
+  <g id="tree" stroke="#22301f" stroke-width=".5">
+    <rect x="-1.5" y="-6" width="3" height="6" fill="#4a3a28" stroke="none"/>
+    <polygon points="0,-27 8,-12 -8,-12" fill="#2f4a30"/><polygon points="0,-20 9.5,-5 -9.5,-5" fill="#3a5a3a"/>
+  </g>
+  <g id="deadTree" stroke="#241c16" stroke-width="2" fill="none" stroke-linecap="round">
+    <path d="M0,0 V-18 M0,-10 L-7,-17 M0,-13 L6,-20 M0,-6 L5,-11"/>
+  </g>
+  <g id="mtn-snow">
+    <polygon points="0,-46 27,0 -27,0" fill="url(#mtnGrad)" stroke="#3a3a34" stroke-width="1"/>
+    <polygon points="0,-46 27,0 5,0" fill="#000" opacity=".16"/>
+    <polygon points="0,-46 8,-31 3,-29 0,-33 -4,-28 -8,-31" fill="#e9edee"/>
+  </g>
+  <g id="mtn-ash">
+    <polygon points="0,-46 27,0 -27,0" fill="url(#mtnAshGrad)" stroke="#1c1610" stroke-width="1"/>
+    <polygon points="0,-46 27,0 5,0" fill="#000" opacity=".22"/>
+  </g>
+  <g id="ship">
+    <path d="M-32,4 q-11,3 -20,1" stroke="#bfe0e4" stroke-width="2" fill="none" opacity=".3"/>
+    <path d="M-26,0 L26,0 L20,7 L-20,7 Z" fill="#66757d" stroke="#232a30" stroke-width="1"/>
+    <rect x="-13" y="-7" width="17" height="7" fill="#93a1a8" stroke="#232a30" stroke-width=".8"/>
+    <rect x="7" y="-5" width="7" height="5" fill="#7d8b92"/>
+    <line x1="-3" y1="-7" x2="-3" y2="-14" stroke="#39434a" stroke-width="1.4"/>
+  </g>
+  <g id="tank">
+    <rect x="-14" y="-4" width="28" height="8" rx="4" fill="#333d2e" stroke="#1e241a" stroke-width=".8"/>
+    <rect x="-12" y="-9" width="24" height="6" rx="2" fill="#55684a"/>
+    <circle cx="-1" cy="-10" r="4.5" fill="#4a5c40" stroke="#2a3324" stroke-width=".8"/>
+    <line x1="3" y1="-11" x2="17" y2="-13" stroke="#39432f" stroke-width="2.6"/>
+  </g>
+  <g id="emb-blue" fill="#f2ead8"><path d="M-6,-3 L0,-8 L6,-3 L6,0 L0,-5 L-6,0 Z"/><path d="M-6,3 L0,-2 L6,3 L6,6 L0,1 L-6,6 Z"/></g>
+  <g id="emb-red" fill="#f2ead8"><path d="M0,-8 C3.5,-4.5 5.5,-2 5.5,1.5 C5.5,5 3,7 0,7 C-3,7 -5.5,5 -5.5,1.5 C-5.5,-2 -3.5,-4.5 0,-8 Z"/><path d="M0,-2 C1.6,-.4 2.6,.8 2.6,2.4 C2.6,4.2 1.4,5.2 0,5.2 C-1.4,5.2 -2.6,4.2 -2.6,2.4 C-2.6,.8 -1.6,-.4 0,-2 Z" fill="#8e2a24"/></g>
+  <g id="emb-gold" fill="#f2ead8"><path d="M0,-8 L2.2,-2.6 L8,-2.4 L3.4,1.2 L5,6.6 L0,3.4 L-5,6.6 L-3.4,1.2 L-8,-2.4 L-2.2,-2.6 Z"/></g>
+  <g id="star"><path d="M0,-11 L3,-3.5 L11,-3.5 L4.8,1.5 L7,9 L0,4.5 L-7,9 L-4.8,1.5 L-11,-3.5 L-3,-3.5 Z" fill="url(#goldGrad)" stroke="#7a5a1c" stroke-width="1"/></g>
+  <!-- CITY SPRITES : anchored bottom-center -->
+  <g id="spr-capital">
+    <ellipse cx="0" cy="2" rx="52" ry="12" fill="#20241f" opacity=".35"/>
+    <g stroke="#141a20" stroke-width="1">
+      <rect x="-46" y="-66" width="15" height="66" fill="#54646f"/><rect x="-24" y="-84" width="17" height="84" fill="#5d707c"/>
+      <rect x="4" y="-74" width="15" height="74" fill="#54646f"/><rect x="26" y="-56" width="14" height="56" fill="#4d5c66"/>
+      <rect x="-36" y="-48" width="17" height="48" fill="#7c92a1"/><rect x="-10" y="-60" width="19" height="60" fill="#8aa2b2"/>
+      <rect x="16" y="-42" width="17" height="42" fill="#7c92a1"/>
+    </g>
+    <g fill="#cfe4ee" opacity=".45">
+      <rect x="-33" y="-44" width="2.5" height="40"/><rect x="-27" y="-44" width="2.5" height="40"/>
+      <rect x="-6" y="-56" width="2.5" height="52"/><rect x="0" y="-56" width="2.5" height="52"/><rect x="5" y="-56" width="2" height="52"/>
+      <rect x="20" y="-38" width="2.5" height="34"/><rect x="26" y="-38" width="2.5" height="34"/>
+      <rect x="-20" y="-80" width="2.5" height="14"/><rect x="-13" y="-80" width="2.5" height="14"/>
+    </g>
+    <g class="lights" fill="#ffd97a">
+      <rect x="-33" y="-40" width="2.5" height="4"/><rect x="-27" y="-28" width="2.5" height="4"/><rect x="-6" y="-50" width="2.5" height="4"/>
+      <rect x="0" y="-34" width="2.5" height="4"/><rect x="5" y="-44" width="2" height="4"/><rect x="20" y="-30" width="2.5" height="4"/>
+      <rect x="26" y="-20" width="2.5" height="4"/><rect x="-20" y="-76" width="2.5" height="4"/><rect x="8" y="-66" width="2.5" height="4"/>
+      <rect x="30" y="-48" width="2.5" height="4"/><rect x="-42" y="-58" width="2.5" height="4"/>
+    </g>
+    <line x1="-15" y1="-84" x2="-15" y2="-96" stroke="#2a333c" stroke-width="1.5"/>
+    <circle class="beacon" cx="-15" cy="-97" r="2.2" fill="#ff5a4d"/>
+  </g>
+  <g id="spr-fortress">
+    <ellipse cx="0" cy="2" rx="50" ry="11" fill="#20241f" opacity=".35"/>
+    <g stroke="#26221a" stroke-width="1">
+      <rect x="-40" y="-30" width="80" height="30" fill="#8f8b7e"/>
+      <g fill="#8f8b7e"><rect x="-40" y="-35" width="7" height="5"/><rect x="-27" y="-35" width="7" height="5"/><rect x="-14" y="-35" width="7" height="5"/><rect x="7" y="-35" width="7" height="5"/><rect x="20" y="-35" width="7" height="5"/><rect x="33" y="-35" width="7" height="5"/></g>
+      <rect x="-47" y="-56" width="17" height="56" fill="#9c978a"/><rect x="30" y="-56" width="17" height="56" fill="#9c978a"/>
+      <polygon points="-49,-56 -28,-56 -38.5,-73" fill="#6e6a5e"/><polygon points="28,-56 49,-56 38.5,-73" fill="#6e6a5e"/>
+      <rect x="-13" y="-46" width="26" height="46" fill="#a39e90"/>
+      <g fill="#a39e90"><rect x="-13" y="-51" width="6" height="5"/><rect x="-3" y="-51" width="6" height="5"/><rect x="7" y="-51" width="6" height="5"/></g>
+      <path d="M-8,0 v-13 q8,-9 16,0 v13 z" fill="#3a352b"/>
+    </g>
+    <g stroke="#5c584c" stroke-width=".8" opacity=".5"><line x1="-40" y1="-18" x2="40" y2="-18"/><line x1="-40" y1="-9" x2="40" y2="-9"/><line x1="-43" y1="-40" x2="-34" y2="-40"/><line x1="34" y1="-40" x2="43" y2="-40"/></g>
+    <g class="lights" fill="#ffb347"><circle cx="-12" cy="-12" r="2"/><circle cx="12" cy="-12" r="2"/><rect x="-40" y="-48" width="3" height="4"/><rect x="37" y="-48" width="3" height="4"/></g>
+  </g>
+  <g id="spr-industrial">
+    <ellipse cx="0" cy="2" rx="52" ry="11" fill="#20241f" opacity=".35"/>
+    <g stroke="#241c16" stroke-width="1">
+      <rect x="-32" y="-62" width="9" height="62" fill="#8a7462"/><rect x="-14" y="-54" width="9" height="54" fill="#8a7462"/>
+      <rect x="-32" y="-62" width="9" height="4" fill="#c0392b"/><rect x="-14" y="-54" width="9" height="4" fill="#c0392b"/>
+      <rect x="-48" y="-28" width="62" height="28" fill="#7c6152"/>
+      <polygon points="-48,-28 -38,-38 -38,-28" fill="#5e493d"/><polygon points="-38,-28 -28,-38 -28,-28" fill="#5e493d"/>
+      <polygon points="-28,-28 -18,-38 -18,-28" fill="#5e493d"/><polygon points="-18,-28 -8,-38 -8,-28" fill="#5e493d"/>
+      <polygon points="-8,-28 2,-38 2,-28" fill="#5e493d"/><polygon points="2,-28 14,-38 14,-28" fill="#5e493d"/>
+      <rect x="14" y="-20" width="32" height="20" fill="#6b5548"/><rect x="14" y="-24" width="32" height="4" fill="#55433a"/>
+      <rect x="30" y="-38" width="14" height="14" rx="3" fill="#9aa7ad"/><ellipse cx="37" cy="-38" rx="7" ry="2.5" fill="#b8c4ca"/>
+    </g>
+    <g class="lights" fill="#ffd97a"><rect x="-42" y="-20" width="5" height="5"/><rect x="-30" y="-20" width="5" height="5"/><rect x="-18" y="-20" width="5" height="5"/><rect x="20" y="-16" width="5" height="5"/><rect x="32" y="-16" width="5" height="5"/></g>
+    <circle class="smoke s1" cx="-27" cy="-66" r="5"/><circle class="smoke s2" cx="-25" cy="-66" r="6"/><circle class="smoke s3" cx="-9" cy="-58" r="5"/>
+  </g>
+  <g id="spr-village">
+    <ellipse cx="0" cy="2" rx="48" ry="9" fill="#20241f" opacity=".32"/>
+    <g stroke="#241c16" stroke-width="1">
+      <rect x="-36" y="-19" width="20" height="19" fill="#a18a66"/><polygon points="-38,-19 -14,-19 -26,-30" fill="#7c4a38"/>
+      <rect x="-8" y="-23" width="22" height="23" fill="#97805c"/><polygon points="-10,-23 16,-23 3,-35" fill="#6e4432"/>
+      <rect x="18" y="-16" width="17" height="16" fill="#a18a66"/><polygon points="16,-16 37,-16 26.5,-26" fill="#7c4a38"/>
+      <rect x="-29" y="-11" width="6" height="11" fill="#4c3a28"/><rect x="0" y="-12" width="6" height="12" fill="#4c3a28"/>
+      <circle cx="43" cy="-4" r="4" fill="#6e6a5e"/>
+    </g>
+    <use href="#tree" transform="translate(50,1) scale(.75)"/>
+    <g class="lights" fill="#ffd97a"><rect x="-22" y="-15" width="4" height="4"/><rect x="7" y="-17" width="4" height="4"/><rect x="24" y="-12" width="4" height="4"/></g>
+  </g>
+</defs>
+
+<rect x="-400" y="-300" width="2400" height="1500" fill="url(#oceanGrad)"/>
+<g id="terrain">
+  <use href="#landShape" fill="none" stroke="#2e7d86" stroke-width="34" opacity=".45" filter="url(#blur6)"/>
+  <use href="#landShape" fill="url(#landGrad)" stroke="#c9bd8f" stroke-width="4"/>
+  <g clip-path="url(#landClip)">
+    <path d="M950,-10 C1050,60 1020,140 1080,200 C1140,260 1240,300 1330,320 C1450,345 1560,330 1610,340 L1610,-10 Z" fill="url(#wastesGrad)" opacity=".95"/>
+    <path d="M790,150 C850,120 980,130 1060,170 C1120,200 1130,270 1080,310 C1020,350 900,340 840,300 C790,265 760,190 790,150 Z" fill="#4c6b42" opacity=".75"/>
+    <path d="M1150,330 C1250,320 1380,340 1470,380 C1540,410 1550,470 1490,505 C1400,545 1260,530 1190,490 C1130,455 1110,370 1150,330 Z" fill="#47523a" opacity=".85"/>
+    <path d="M1080,520 C1180,505 1300,520 1400,545 C1500,565 1580,600 1610,640 L1610,910 L1000,910 C1010,820 1040,700 1060,620 C1070,575 1060,540 1080,520 Z" fill="url(#ashGrad)" opacity=".96"/>
+    <ellipse cx="600" cy="390" rx="120" ry="60" fill="#3f5a3a" opacity=".14"/>
+    <ellipse cx="900" cy="530" rx="130" ry="55" fill="#3f5a3a" opacity=".12"/>
+    <ellipse cx="690" cy="270" rx="90" ry="45" fill="#8a9a6a" opacity=".18"/>
+    <g stroke="#8f7f52" stroke-width="2" fill="none" opacity=".4">
+      <path d="M1060,90 q22,-10 44,0"/><path d="M1180,60 q26,-11 52,0"/><path d="M1300,110 q24,-10 48,0"/>
+      <path d="M1420,80 q22,-9 44,0"/><path d="M1120,180 q20,-9 40,0"/><path d="M1360,200 q24,-10 48,0"/><path d="M1480,160 q20,-9 40,0"/>
+    </g>
+    <g fill="#2e4a44" opacity=".7"><ellipse cx="1250" cy="420" rx="26" ry="9"/><ellipse cx="1350" cy="460" rx="20" ry="7"/><ellipse cx="1210" cy="470" rx="15" ry="6"/></g>
+    <g id="reeds"></g>
+    <g id="trees"></g>
+    <g>
+      <use href="#mtn-snow" transform="translate(505,150) scale(1.2)"/><use href="#mtn-snow" transform="translate(560,130) scale(1.5)"/>
+      <use href="#mtn-snow" transform="translate(620,160) scale(1.3)"/><use href="#mtn-snow" transform="translate(680,140) scale(1.6)"/>
+      <use href="#mtn-snow" transform="translate(745,175) scale(1.2)"/><use href="#mtn-snow" transform="translate(800,150) scale(1.4)"/>
+      <use href="#mtn-snow" transform="translate(860,190)"/><use href="#mtn-snow" transform="translate(540,205) scale(.9)"/>
+      <use href="#mtn-snow" transform="translate(650,218)"/><use href="#mtn-snow" transform="translate(760,228) scale(.9)"/>
+      <use href="#mtn-snow" transform="translate(470,192) scale(.8)"/><use href="#mtn-snow" transform="translate(900,162) scale(.8)"/>
+      <use href="#mtn-ash" transform="translate(1540,320) scale(1.1)"/><use href="#mtn-ash" transform="translate(1585,400) scale(.9)"/>
+      <use href="#mtn-ash" transform="translate(1590,700)"/><use href="#mtn-ash" transform="translate(1150,885)"/>
+      <use href="#mtn-ash" transform="translate(1240,862) scale(1.3)"/><use href="#mtn-ash" transform="translate(1330,882) scale(1.5)"/>
+      <use href="#mtn-ash" transform="translate(1430,872) scale(1.2)"/><use href="#mtn-ash" transform="translate(1530,852) scale(1.4)"/>
+    </g>
+    <g stroke="#241c16" opacity=".85">
+      <use href="#deadTree" transform="translate(1180,600)"/><use href="#deadTree" transform="translate(1330,620) scale(1.2)"/>
+      <use href="#deadTree" transform="translate(1240,740) scale(.9)"/><use href="#deadTree" transform="translate(1420,760) scale(1.1)"/>
+      <use href="#deadTree" transform="translate(1120,720) scale(.8)"/><use href="#deadTree" transform="translate(1500,700)"/>
+    </g>
+    <g fill="none" stroke="url(#lavaGrad)" stroke-width="3.5" stroke-linecap="round" filter="url(#lavaGlow)">
+      <path class="lava" d="M1468,600 C1440,660 1400,700 1350,742"/>
+      <path class="lava" d="M1496,610 C1520,670 1556,720 1588,762" style="animation-delay:1.1s"/>
+      <path class="lava" d="M1436,640 C1386,662 1336,662 1292,692" style="animation-delay:2.2s"/>
+    </g>
+    <g>
+      <polygon points="1472,472 1544,606 1400,606" fill="#3a2c22" stroke="#1c1610" stroke-width="1.5"/>
+      <polygon points="1472,472 1544,606 1490,606" fill="#000" opacity=".2"/>
+      <ellipse cx="1472" cy="478" rx="25" ry="9" fill="#ff7a29" filter="url(#lavaGlow)"/>
+      <ellipse cx="1472" cy="478" rx="13" ry="4.5" fill="#ffd27a"/>
+      <circle class="smoke s1" cx="1470" cy="468" r="9"/><circle class="smoke s2" cx="1478" cy="468" r="11"/><circle class="smoke s3" cx="1466" cy="468" r="8"/>
+      <circle class="ember e1" cx="1462" cy="474" r="2"/><circle class="ember e2" cx="1478" cy="476" r="1.6"/><circle class="ember e3" cx="1470" cy="472" r="2.2"/>
+    </g>
+  </g>
+  <path d="M905,178 C930,240 960,300 1000,360 C1040,420 1050,470 1010,540 C975,600 950,660 918,760 L895,835" fill="none" stroke="#2e6b78" stroke-width="6" stroke-linecap="round" opacity=".85"/>
+  <path d="M905,178 C930,240 960,300 1000,360 C1040,420 1050,470 1010,540 C975,600 950,660 918,760 L895,835" fill="none" stroke="#4da3e0" stroke-width="2" stroke-linecap="round" opacity=".35"/>
+  <g fill="url(#landGrad)" stroke="#c9bd8f" stroke-width="3">
+    <path d="M552,648 l16,-7 14,5 4,10 -12,8 -18,-4 z"/><path d="M606,694 l14,-6 12,6 -2,10 -16,4 -10,-8 z"/><path d="M658,730 l12,-5 10,5 -1,8 -13,4 -9,-7 z"/>
+  </g>
+  <use href="#tree" transform="translate(566,652) scale(.8)"/><use href="#tree" transform="translate(618,698) scale(.7)"/>
+  <g stroke="#7fb6bd" stroke-width="2" fill="none" opacity=".18">
+    <path d="M200,320 q10,-5 20,0 q10,5 20,0"/><path d="M150,520 q10,-5 20,0 q10,5 20,0"/><path d="M300,640 q10,-5 20,0 q10,5 20,0"/>
+    <path d="M430,700 q10,-5 20,0 q10,5 20,0"/><path d="M560,780 q10,-5 20,0 q10,5 20,0"/><path d="M720,860 q10,-5 20,0 q10,5 20,0"/>
+    <path d="M260,180 q10,-5 20,0 q10,5 20,0"/><path d="M420,560 q10,-5 20,0 q10,5 20,0"/>
+  </g>
+  <g transform="translate(170,700)" opacity=".35" stroke="#9fd0d6" fill="none">
+    <circle r="46" stroke-width="1.5"/><circle r="34" stroke-width=".8"/>
+    <path d="M0,-46 V46 M-46,0 H46 M-32,-32 L32,32 M-32,32 L32,-32" stroke-width="1"/>
+    <polygon points="0,-46 6,-10 0,-16 -6,-10" fill="#9fd0d6" stroke="none"/>
+    <text y="-54" text-anchor="middle" fill="#9fd0d6" stroke="none" font-size="14" font-style="italic">N</text>
+  </g>
+  <g transform="translate(250,240) rotate(-15)"><use href="#ship" class="ship-b"/></g>
+  <g transform="translate(180,420) rotate(10)"><use href="#ship" class="ship-b" style="animation-delay:1.4s"/></g>
+  <g transform="translate(330,560) rotate(-28)"><use href="#ship" class="ship-b" style="animation-delay:2.8s"/></g>
+  <g transform="translate(520,720) rotate(-12)"><use href="#ship" class="ship-b" style="animation-delay:.7s"/></g>
+  <g transform="translate(700,800) rotate(-8)"><use href="#ship" class="ship-b" style="animation-delay:3.5s"/></g>
+  <g transform="translate(870,845) rotate(-4)"><use href="#ship" class="ship-b" style="animation-delay:2s"/></g>
+  <g transform="translate(600,300) rotate(18)"><use href="#tank"/></g>
+  <g transform="translate(575,345) rotate(14) scale(.9)"><use href="#tank"/></g>
+  <g transform="translate(1150,640) rotate(-10)"><use href="#tank"/></g>
+  <g transform="translate(935,472) rotate(2) scale(.9)"><use href="#tank"/></g>
+  <ellipse class="cloud c1" cx="560" cy="330" rx="200" ry="80" fill="url(#cloudGrad)"/>
+  <ellipse class="cloud c2" cx="1150" cy="620" rx="240" ry="90" fill="url(#cloudGrad)"/>
+</g>
+<g id="regionLabels">
+  <text class="region-label" transform="translate(1150,112) rotate(-7)" font-size="27" fill="#6e5c34">NORTHERN EXPANSE</text>
+  <text class="region-label" transform="translate(640,102) rotate(-8)" font-size="24" fill="#3d4438">RIDGE SECTOR</text>
+  <text class="region-label" transform="translate(948,242) rotate(-5)" font-size="21" fill="#263a24">NORTH FOREST</text>
+  <text class="region-label" transform="translate(1252,408) rotate(-4)" font-size="23" fill="#2c3322">EASTERN WETLANDS</text>
+  <text class="region-label sea" transform="translate(295,600) rotate(-33)" font-size="25">WESTERN COAST</text>
+  <text class="region-label sea" transform="translate(690,798) rotate(-15)" font-size="26">SOUTHERN COAST</text>
+  <text class="region-label" transform="translate(1298,818) rotate(-6)" font-size="26" fill="#8a5a34">SOUTHEAST RIDGE</text>
+</g>
+<rect id="gridRect" x="-400" y="-300" width="2400" height="1500" fill="url(#gridPattern)" style="display:none" pointer-events="none"/>
+<rect id="atmoTerrain" x="-400" y="-300" width="2400" height="1500"/>
+<g id="roads"></g>
+<g id="routes"></g>
+<g id="cities"></g>
+<g id="ghost" style="display:none"></g>
+<rect id="atmoGlobal" x="-400" y="-300" width="2400" height="1500"/>
+<rect x="-400" y="-300" width="2400" height="1500" fill="url(#grain)" opacity=".4" pointer-events="none"/>
+</svg>
+
+<div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>
+
+<section id="objectives" class="panel" aria-label="Operation objectives">
+  <div class="phead">Objectives</div>
+  <ul id="objList"></ul>
+  <div class="objSub">Select an objective to locate it, then complete it from the Command controls. Drag markers to reposition.</div>
+  <div class="objAdd"><button class="btn" id="btnAddObj" disabled>+ &nbsp; Add objective</button></div>
+</section>
+
+<div id="topbar">
+  <button id="backBtn" title="Back to operation overview" aria-label="Back to operation overview">←</button>
+  <div class="brand"><span class="brand-mark" aria-hidden="true">⌁</span><div class="brand-copy"><span class="brand-kicker">COMMAND CENTER / OPERATIONS</span><span class="brand-name" id="headerOpName">Operation map</span></div></div>
+  <div class="header-spacer"></div><div class="header-status">TACTICAL VIEW ONLINE</div>
+  <button id="soundBtn" title="Toggle sound" aria-pressed="true" aria-label="Toggle sound">
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M11 5 L6 9 H2 v6 h4 l5 4 z" fill="currentColor" stroke="none"/>
+      <path class="waves" d="M15.5 8.5 a5 5 0 0 1 0 7 M18 6 a8.5 8.5 0 0 1 0 12"/>
+      <line class="slash" x1="15" y1="8" x2="22" y2="16"/><line class="slash" x1="22" y1="8" x2="15" y2="16"/>
+    </svg>
+  </button>
+  <div class="pill" id="xpPill" title="XP at stake — objectives + operation">
+    <svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M10 1.5 18.5 10 10 18.5 1.5 10Z"/><path d="M6 10h8M10 6v8"/></svg>
+    <span id="xpVal">0</span><small>XP AT STAKE</small>
+  </div>
+  <div class="pill" id="objPill" title="Objectives taken"><small>TAKEN</small><span id="objVal">0/0</span></div>
+</div>
+
+<div class="map-overline"><span>◉</span> Tactical map / live view</div>
+<aside id="tools" class="panel" aria-label="Command tools">
+  <div class="phead">Command controls <button id="mobileToolsBtn" type="button" aria-expanded="false" aria-controls="toolsBody">OPEN ↑</button></div>
+  <div class="tbody scroll" id="toolsBody">
+    <div class="sec">
+      <h3>Operation</h3>
+      <div id="opBrief" style="font-size:12px;color:var(--ink-dim);line-height:1.55"></div>
+      <div class="cBtns" style="grid-template-columns:1fr">
+        <button class="btn primary" id="btnDeclare" disabled>Declare mission complete</button>
+      </div>
+      <div id="opState" style="font-size:11px;color:var(--ink-faint);margin-top:6px;letter-spacing:.5px"></div>
+    </div>
+    <div class="sec">
+      <h3>Mode</h3>
+      <div class="modeRow">
+        <button class="btn active" id="modeSelect" title="Select, inspect and drag markers">⌖ Select</button>
+        <button class="btn primary" id="modeAdd" disabled title="Place a new objective (N)">+ Objective</button>
+      </div>
+    </div>
+    <div class="sec" id="charter">
+      <h3>Marker</h3>
+      <div id="charterEmpty">No marker selected.<br>Select a map marker to inspect it.</div>
+      <div id="charterBody">
+        <label class="fld" for="cityName">Name</label>
+        <input type="text" id="cityName" maxlength="60" autocomplete="off" spellcheck="false">
+        <div id="cityMeta"></div>
+        <div class="cBtns" id="completeRow" style="display:none">
+          <button class="btn primary" id="btnComplete" title="Complete the selected objective">✓ Complete objective</button>
+        </div>
+        <div id="planWrap" style="display:none">
+          <label class="fld" for="planBox" style="margin-top:10px">Plan of attack</label>
+          <textarea id="planBox" rows="4" maxlength="600" placeholder="How you will take this objective — steps, timing, logistics…" spellcheck="false"></textarea>
+        </div>
+        <div class="cBtns" id="targetRow" style="display:none">
+          <button class="btn" id="btnTarget" title="Designate this objective as the current target">◎ Set as target</button>
+        </div>
+        <div class="cBtns">
+          <button class="btn" id="btnFocus" title="Centre the view on this marker">⌖ Focus</button>
+          <button class="btn danger" id="btnDelete" disabled title="Remove this objective">✕ Remove</button>
+        </div>
+      </div>
+    </div>
+    <div class="sec">
+      <h3>Map Settings</h3>
+      <div class="ctl"><label for="setScale">Marker scale</label><input type="range" id="setScale" min="0.6" max="1.6" step="0.05" value="1"><output id="setScaleVal">1.00</output></div>
+      <div class="ctl"><label for="setLabel">Label size</label><input type="range" id="setLabel" min="0.7" max="1.6" step="0.05" value="1"><output id="setLabelVal">1.00</output></div>
+      <div class="ctl"><label for="setGlow">Highlight glow</label><input type="range" id="setGlow" min="0" max="1" step="0.05" value="0.8"><output id="setGlowVal">0.80</output></div>
+      <div class="tglGrid">
+        <label class="tgl">Banners<input type="checkbox" id="tglBanners" checked><span class="sw"></span></label>
+        <label class="tgl">Labels<input type="checkbox" id="tglLabels" checked><span class="sw"></span></label>
+        <label class="tgl">Roads<input type="checkbox" id="tglRoads" checked><span class="sw"></span></label>
+        <label class="tgl">Routes<input type="checkbox" id="tglRoutes" checked><span class="sw"></span></label>
+        <label class="tgl">Grid<input type="checkbox" id="tglGrid"><span class="sw"></span></label>
+      </div>
+      <label class="fld" for="setAtmo" style="margin-top:4px">Map lighting</label>
+      <select id="setAtmo"><option value="day">Day — standard</option><option value="dusk">Dusk — low light</option><option value="night">Night — dark display</option></select>
+    </div>
+  </div>
+</aside>
+
+<div id="zoomCluster">
+  <button class="btn" id="zoomIn" title="Zoom in (+)" aria-label="Zoom in">+</button>
+  <button class="btn" id="zoomOut" title="Zoom out (−)" aria-label="Zoom out">−</button>
+  <button class="btn" id="zoomHome" title="Reset view (0)" aria-label="Reset map view">⌂</button>
+</div>
+
+<section id="minimapPanel" class="panel" aria-label="Minimap">
+  <svg id="minimap" viewBox="0 0 1600 900">
+    <rect width="1600" height="900" fill="#0a1a27"/>
+    <use href="#landShape" fill="#27495d" stroke="#6b9aae" stroke-width="6"/>
+    <path d="M1080,520 C1180,505 1300,520 1400,545 C1500,565 1580,600 1610,640 L1610,910 L1000,910 C1010,820 1040,700 1060,620 C1070,575 1060,540 1080,520 Z" fill="#1a3547" opacity=".9"/>
+    <path d="M950,-10 C1050,60 1020,140 1080,200 C1140,260 1240,300 1330,320 C1450,345 1560,330 1610,340 L1610,-10 Z" fill="#36596c" opacity=".8"/>
+    <g id="miniDots"></g>
+    <rect id="miniView" fill="rgba(112,216,247,.10)" stroke="#8de9ff" stroke-width="8"/>
+  </svg>
+  <div id="miniCoords">SECTOR — · —, —</div>
+</section>
+
+<div id="hint"><span id="hintText"></span></div>
+<div id="toasts" aria-live="polite"></div>
+<div id="tooltip"></div>
+<input type="text" id="renameInput" maxlength="60" autocomplete="off" spellcheck="false" aria-label="Rename objective">
+</div>
+
+<script>
+(function(){
+'use strict';
+const NS='http://www.w3.org/2000/svg', W=1600, H=900;
+const $=id=>document.getElementById(id);
+const svg=$('map'), citiesG=$('cities'), roadsG=$('roads'), routesG=$('routes'), ghostG=$('ghost');
+const FACTIONS={blue:{name:'Held',color:'#64d7c6'},red:{name:'Objective',color:'#f08a80'},gold:{name:'Operation Target',color:'#8edbff'}};
+const TYPES={capital:{label:'Capital',h:96,w:100},fortress:{label:'Forward Post',h:73,w:100},village:{label:'Objective',h:36,w:104}};
+const COAST=[[1005,900],[988,846],[948,818],[906,801],[866,772],[836,748],[798,733],[768,706],[742,690],[736,662],[708,648],[694,664],[668,646],[646,616],[606,604],[578,574],[548,562],[522,534],[484,524],[458,494],[432,472],[418,442],[392,432],[372,402],[352,382],[346,352],[322,332],[312,302],[326,272],[312,242],[332,212],[316,182],[336,152],[322,122],[342,92],[326,62],[342,32],[332,0]];
+const POST_POS=[410,330];
+let P=null;                       /* payload from the parent app */
+let view={x:0,y:0,w:W,h:H}, cityNodes=new Map(), miniDots=new Map();
+let selectedId=null, mode='select', firstRender=true;
+let renameCityId=null, renameCancel=false, nameEditSnapshot=null;
+let clickTimer=null, clickTarget=null;
+let viewRaf=0, tweenRaf=0, prevDone=new Set(), settings=null;
+
+/* ---------- parent bridge ---------- */
+function post(type,payload){ parent.postMessage(Object.assign({opmap:true,type},payload||{}),location.protocol==='file:'?'*':location.origin); }
+function settingsLoad(){
+  const def={cityScale:1,labelSize:1,glow:.8,banners:true,labels:true,roads:true,routes:true,grid:false,atmo:'day',sound:true};
+  try{const raw=localStorage.getItem('opmap-settings');if(raw)return Object.assign(def,JSON.parse(raw));}catch(e){}
+  return def;
+}
+function settingsSave(){try{localStorage.setItem('opmap-settings',JSON.stringify(settings))}catch(e){}}
+
+/* ---------- utils ---------- */
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function el(tag,attrs,parent){const n=document.createElementNS(NS,tag);for(const k in attrs)n.setAttribute(k,attrs[k]);if(parent)parent.appendChild(n);return n}
+function sectorOf(x,y){return String.fromCharCode(65+clamp(Math.floor(x/100),0,15))+'-'+(clamp(Math.floor(y/100),0,8)+1)}
+
+/* ---------- land geometry ---------- */
+const landPath=$('landShape');
+landPath.setAttribute('d','M332,0 L1600,0 L1600,900 L1005,900 '+COAST.map(p=>'L'+p[0]+','+p[1]).join(' ')+' Z');
+const LAND_POLY=[[332,0],[1600,0],[1600,900]].concat(COAST);
+function isLand(x,y){
+  try{ if(landPath.isPointInFill) return landPath.isPointInFill(new DOMPoint(x,y)); }catch(e){}
+  let inside=false;
+  for(let i=0,j=LAND_POLY.length-1;i<LAND_POLY.length;j=i++){
+    const xi=LAND_POLY[i][0],yi=LAND_POLY[i][1],xj=LAND_POLY[j][0],yj=LAND_POLY[j][1];
+    if(((yi>y)!==(yj>y))&&(x<(xj-xi)*(y-yi)/(yj-yi)+xi))inside=!inside;
+  }
+  return inside;
+}
+
+/* ---------- static scatter (trees, reeds, grain) ---------- */
+(function buildScatter(){
+  const rnd=mulberry32(1337), trees=$('trees');
+  const clusters=[[430,120,110,90,26],[950,240,150,80,34],[620,420,90,60,12],[1180,470,80,40,8],[880,640,70,40,8],[1240,150,40,25,5],[560,300,60,45,8]];
+  clusters.forEach(cl=>{
+    for(let i=0;i<cl[4];i++){
+      const x=cl[0]+(rnd()*2-1)*cl[2], y=cl[1]+(rnd()*2-1)*cl[3];
+      if(!isLand(x,y))continue;
+      el('use',{href:'#tree',transform:`translate(${x.toFixed(1)},${y.toFixed(1)}) scale(${(0.6+rnd()*0.55).toFixed(2)})`},trees);
+    }
+  });
+  const reeds=$('reeds');
+  for(let i=0;i<26;i++){
+    const x=1160+rnd()*320, y=350+rnd()*150;
+    if(!isLand(x,y))continue;
+    el('path',{d:`M${x},${y} v-9 M${x+4},${y} v-7 M${x+2},${y} v-11`,stroke:'#5c6b40','stroke-width':1.4,fill:'none',opacity:.8},reeds);
+  }
+  try{
+    const c=document.createElement('canvas');c.width=180;c.height=180;
+    const ctx=c.getContext('2d'),img=ctx.createImageData(180,180),d=img.data,r2=mulberry32(77);
+    for(let i=0;i<d.length;i+=4){const v=Math.floor(r2()*255);d[i]=v;d[i+1]=v;d[i+2]=v;d[i+3]=20;}
+    ctx.putImageData(img,0,0);
+    $('grainImg').setAttribute('href',c.toDataURL());
+  }catch(e){}
+})();
+
+/* ---------- audio ---------- */
+let AC=null,master=null;
+function audio(){
+  if(!settings.sound)return null;
+  try{
+    if(!AC){AC=new (window.AudioContext||window.webkitAudioContext)();master=AC.createGain();master.gain.value=.16;master.connect(AC.destination);}
+    if(AC.state==='suspended')AC.resume();
+    return AC;
+  }catch(e){return null}
+}
+function tone(f,dur,type,vol,slide){
+  const ctx=audio();if(!ctx)return;
+  try{
+    const o=ctx.createOscillator(),g=ctx.createGain(),t=ctx.currentTime;
+    o.type=type||'sine';o.frequency.setValueAtTime(f,t);
+    if(slide)o.frequency.exponentialRampToValueAtTime(slide,t+dur);
+    g.gain.setValueAtTime(0,t);g.gain.linearRampToAtTime(vol||.5,t+.012);g.gain.exponentialRampToValueAtTime(.001,t+dur);
+    o.connect(g);g.connect(master);o.start(t);o.stop(t+dur+.05);
+  }catch(e){}
+}
+function snd(kind){
+  if(!settings.sound)return;
+  switch(kind){
+    case 'tick':tone(660,.07,'triangle',.35);break;
+    case 'place':tone(150,.22,'sine',.8,55);tone(880,.09,'triangle',.2);break;
+    case 'rename':tone(520,.06,'triangle',.3);setTimeout(()=>tone(700,.07,'triangle',.3),70);break;
+    case 'delete':tone(220,.28,'sawtooth',.3,70);break;
+    case 'capture':tone(880,.3,'sine',.45);setTimeout(()=>tone(1318,.45,'sine',.45),140);break;
+    case 'error':tone(120,.2,'square',.25,90);break;
+  }
+}
+
+/* ---------- toasts ---------- */
+function toast(msg,kind){
+  const box=$('toasts'),t=document.createElement('div');
+  t.className='toast '+(kind||'info');
+  const icons={info:'◈',success:'✦',warn:'⚠',danger:'✕'};
+  t.innerHTML=`<span class="ti">${icons[kind||'info']||'◈'}</span><span>${esc(msg)}</span>`;
+  box.appendChild(t);
+  while(box.children.length>3)box.firstChild.remove();
+  let killed=false;
+  function kill(){if(killed)return;killed=true;t.classList.add('out');setTimeout(()=>t.remove(),320)}
+  setTimeout(kill,3800);
+}
+
+/* ---------- cities from operation payload ---------- */
+function buildCities(){
+  const cities=[];
+  if(!P)return cities;
+  cities.push({id:'post',kind:'post',name:'Forward Post',type:'fortress',faction:'blue',x:P.postX,y:P.postY,star:false});
+  P.minis.forEach(m=>cities.push({id:m.id,kind:'mini',mid:m.id,name:m.text,type:'village',faction:m.done?'blue':'red',x:m.x,y:m.y,star:false,done:m.done,plan:m.plan||'',isTarget:P.targetMiniId===m.id&&!m.done}));
+  cities.push({id:'capital',kind:'capital',name:P.opName,type:'capital',faction:'gold',x:P.capX,y:P.capY,star:true});
+  return cities;
+}
+const allDone=()=>!!P&&P.minis.every(m=>m.done);
+let CITIES=[];
+
+/* ---------- city rendering ---------- */
+function markerColor(c){return c.kind==='capital'?'#9cddff':c.kind==='mini'&&!c.done?'#f08a80':'#64d7c6'}
+function bannerMarkup(faction){
+  const color=FACTIONS[faction].color;
+  return `<g class="banner"><path d="M17,-49 H32 V-35 H17 Z" fill="#0a1c27" stroke="${color}" stroke-width="1.5"/><circle cx="24.5" cy="-42" r="2.8" fill="${color}"/></g>`;
+}
+function markerMarkup(c){
+  const color=markerColor(c);
+  const glyph=c.kind==='capital'
+    ?'<path d="M-8,-29 L0,-37 L8,-29 L0,-21 Z M0,-41 V-37 M0,-21 V-17 M-12,-29 H-8 M8,-29 H12"/>'
+    :c.kind==='post'?'<path d="M-9,-25 L0,-35 L9,-25 M-7,-25 V-19 H7 V-25 M0,-35 V-40"/>'
+    :c.done?'<path d="M-8,-29 L-2,-23 L9,-36"/>':'<path d="M0,-38 L9,-29 L0,-20 L-9,-29 Z M0,-33 V-27 M0,-24 V-23"/>';
+  const reticle=c.isTarget?'<g class="target-reticle"><circle cx="0" cy="-29" r="37" fill="none" stroke="#ff5a4d" stroke-width="2"/><path d="M0,-73 V-63 M0,-7 V3 M-45,-29 H-35 M35,-29 H45" stroke="#ff5a4d" stroke-width="2"/></g>':'';
+  return `${reticle}<circle cx="0" cy="-29" r="24" fill="#0a202d" stroke="${color}" stroke-width="1.5"/>
+    <circle cx="0" cy="-29" r="19" fill="none" stroke="${color}" stroke-width=".8" opacity=".5"/>
+    <path d="M-28,-29 H-23 M23,-29 H28 M0,-57 V-53 M0,-5 V2" stroke="${color}" stroke-width="1.4"/>
+    <g fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${glyph}</g>
+    ${bannerMarkup(c.faction)}`;
+}
+function cityNode(c,idx){
+  const s=settings.cityScale;
+  const g=el('g',{class:'city',transform:`translate(${c.x},${c.y})`,'data-id':c.id,tabindex:0,role:'button','aria-label':`${c.name} — ${c.kind==='mini'?(c.done?'taken':'objective'):c.kind==='post'?'forward post':'operation target'}`},citiesG);
+  const sc=el('g',{class:'scale',transform:`scale(${s})`},g);
+  el('circle',{class:'hover-glow',cx:0,cy:-29,r:38,fill:'url(#glowGrad)'},sc);
+  el('circle',{class:'sel-ring',cx:0,cy:-29,r:31},sc);
+  const an=el('g',{class:'anim'},sc);
+  el('rect',{class:'hit',x:-37,y:-64,width:74,height:74},an);
+  an.insertAdjacentHTML('beforeend',markerMarkup(c));
+  const label=el('text',{class:'city-label',y:20,'font-size':(15*settings.labelSize).toFixed(1)},g);
+  label.textContent=c.name;
+  cityNodes.set(c.id,g);
+  return g;
+}
+function renderCities(){
+  const focused=document.activeElement&&document.activeElement.closest&&document.activeElement.closest('.city');
+  const focusedId=focused&&focused.getAttribute('data-id');
+  citiesG.innerHTML='';cityNodes.clear();
+  CITIES.forEach((c,i)=>cityNode(c,firstRender?i:0));
+  if(selectedId){const n=cityNodes.get(selectedId);if(n)n.classList.add('selected')}
+  if(focusedId){const n=cityNodes.get(focusedId);if(n)n.focus({preventScroll:true})}
+}
+function rebuildCity(c){
+  const old=cityNodes.get(c.id);
+  if(old)old.remove();
+  cityNodes.delete(c.id);
+  const g=cityNode(c,0);g.classList.remove('enter');
+  if(c.id===selectedId)g.classList.add('selected');
+}
+function chainPairs(){
+  const ids=CITIES.map(c=>c.id), out=[];
+  for(let i=0;i<ids.length-1;i++)out.push({a:ids[i],b:ids[i+1]});
+  return out;
+}
+function renderRoutes(){
+  roadsG.innerHTML='';routesG.innerHTML='';
+  const byId=new Map(CITIES.map(c=>[c.id,c]));
+  const s=settings.cityScale;
+  chainPairs().forEach((k,i)=>{
+    const a=byId.get(k.a),b=byId.get(k.b);if(!a||!b)return;
+    const dx=b.x-a.x,dy=b.y-a.y,len=Math.hypot(dx,dy);if(len<10)return;
+    const ux=dx/len,uy=dy/len,pad=56*s;
+    if(len<pad*2+16)return;
+    const x1=a.x+ux*pad,y1=a.y+uy*pad,x2=b.x-ux*pad,y2=b.y-uy*pad;
+    const off=(i%2?1:-1)*Math.min(26,len*.12);
+    const cx=(x1+x2)/2-uy*off,cy=(y1+y2)/2+ux*off;
+    const d=`M${x1.toFixed(1)},${y1.toFixed(1)} Q${cx.toFixed(1)},${cy.toFixed(1)} ${x2.toFixed(1)},${y2.toFixed(1)}`;
+    el('path',{class:'road-o',d},roadsG);
+    el('path',{class:'road-i',d},roadsG);
+    const bothDone=(a.kind!=='mini'||a.done)&&(b.kind!=='mini'||b.done);
+    const col=bothDone?'#64d7c6':(a.kind==='mini'&&a.done?'#64d7c6':'#f08a80');
+    el('path',{class:'route',d,stroke:col,'marker-end':`url(#arr-${bothDone?'blue':'red'})`},routesG);
+  });
+}
+function renderMinimap(){
+  const g=$('miniDots');g.innerHTML='';miniDots.clear();
+  CITIES.forEach(c=>{
+    const d=el('circle',{cx:c.x,cy:c.y,r:15,fill:c.kind==='mini'&&!c.done?'#f08a80':(c.kind==='capital'?'#9cddff':'#64d7c6'),stroke:'#0a1a27','stroke-width':4},g);
+    miniDots.set(c.id,d);
+  });
+}
+function renderObjectives(){
+  const list=$('objList');list.innerHTML='';
+  if(!P)return;
+  let activeSet=false;
+  const doneN=P.minis.filter(m=>m.done).length;
+  P.minis.forEach(m=>{
+    const li=document.createElement('li');
+    const isTgt=P.targetMiniId===m.id&&!m.done;
+    if(m.done)li.className='done';else if(!activeSet){li.className='active';activeSet=true}
+    li.innerHTML=`<span class="oi" style="${isTgt?'color:#ff5a4d':''}">${m.done?'✓':(isTgt?'◎':'◇')}</span><span class="ot">${esc(m.text)}</span><span class="op"${isTgt?' style="color:#ff5a4d;font-size:9px;letter-spacing:1px"':''}>${isTgt?'TARGET':'+50'}</span>`;
+    li.title=m.plan?('PLAN OF ATTACK:\n'+m.plan):(isTgt?'◎ Current target. ':'')+'Click to focus · double-click to rename';
+    li.tabIndex=0;li.setAttribute('role','button');li.setAttribute('aria-label',`${m.text}, ${m.done?'taken':'not taken'}; focus on map`);
+    const focusObjective=()=>{select(m.id);const c=CITIES.find(x=>x.id===m.id);if(c)focusCity(c);snd('tick')};
+    li.addEventListener('click',focusObjective);
+    li.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();focusObjective()}});
+    li.addEventListener('dblclick',()=>{const c=CITIES.find(x=>x.id===m.id);if(c)openRename(c)});
+    list.appendChild(li);
+  });
+  if(!P.minis.length)list.innerHTML='<li style="cursor:default;color:var(--ink-faint);font-style:italic">No objectives yet. You can add one or complete this operation.</li>';
+  $('objVal').textContent=`${doneN}/${P.minis.length}`;
+  $('xpVal').textContent=(P.minis.length-doneN)*50+200;
+}
+function renderCharter(){
+  const c=CITIES.find(x=>x.id===selectedId);
+  const box=$('charter');
+  if(!c){box.classList.remove('has');$('planWrap').style.display='none';$('targetRow').style.display='none';return}
+  box.classList.add('has');
+  if(document.activeElement!==$('cityName'))$('cityName').value=c.name;
+  const isMini=c.kind==='mini';
+  const isTmp=isMini&&String(c.id).startsWith('tmp_');
+  const isTgt=isMini&&!isTmp&&P&&P.targetMiniId===c.mid&&!c.done;
+  $('cityMeta').innerHTML=c.kind==='mini'
+    ?`${c.done?'<span style="color:var(--success)">TAKEN — secured</span>':'<span style="color:var(--red)">OBJECTIVE — pending</span>'} · +50 XP${isTgt?' · <span style="color:#ff5a4d">◎ CURRENT TARGET</span>':''}<br>Sector ${sectorOf(c.x,c.y)} · ${Math.round(c.x)}, ${Math.round(c.y)}`
+    :c.kind==='post'?'Forward post · operation staging point.':'<span style="color:var(--amber)">Operation target.</span> Complete every objective, then declare the mission complete.';
+  $('planWrap').style.display=isMini?'':'none';
+  if(isMini&&document.activeElement!==$('planBox'))$('planBox').value=c.plan||'';
+  $('planBox').disabled=!isMini||isTmp;
+  $('planBox').placeholder=isMini&&c.done?'Taken — plan kept for the record.':'How you will take this objective — steps, timing, logistics…';
+  $('completeRow').style.display=(isMini&&!isTmp&&P&&P.interactive)?'':'none';
+  $('btnComplete').textContent=c.done?'↩ Yield objective':'✓ Complete objective';
+  $('btnComplete').classList.toggle('danger',!!c.done);
+  $('btnComplete').classList.toggle('primary',!c.done);
+  $('targetRow').style.display=(isMini&&!isTmp&&P&&P.interactive&&!c.done)?'':'none';
+  $('btnTarget').textContent=isTgt?'◎ Clear target':'◎ Set as target';
+  $('btnTarget').classList.toggle('active',!!isTgt);
+  $('btnDelete').style.display=c.kind==='mini'?'':'none';
+  $('cityName').disabled=c.kind!=='mini'||!P||!P.interactive;
+  $('btnDelete').disabled=!P||!P.interactive;
+}
+function renderAll(){renderCities();renderRoutes();renderMinimap();renderCharter();renderObjectives();updateMiniRect()}
+
+/* ---------- state message ---------- */
+function applyState(payload){
+  const wasFirst=firstRender;
+  if(!payload.interactive){
+    if(renameCityId)closeRename(true);
+    if(mode==='add')setMode('select');
+    if(clickTimer){clearTimeout(clickTimer);clickTimer=null;clickTarget=null}
+  }
+  P=payload;
+  $('btnAddObj').disabled=!P.interactive;
+  $('modeAdd').disabled=!P.interactive;
+  svg.classList.toggle('read-only',!P.interactive);
+  CITIES=buildCities();
+  if(!wasFirst&&selectedId&&!CITIES.some(c=>c.id===selectedId))selectedId=null;
+  renderAll();
+  $('btnDeclare').disabled=!(P.interactive&&allDone());
+  $('btnDeclare').textContent=P.status==='complete'?'Mission complete':'Declare mission complete';
+  $('opBrief').textContent=P.task||'';
+  $('headerOpName').textContent=P.opName||'Operation map';
+  $('opState').textContent=P.status==='complete'?'STATUS / MISSION COMPLETE'
+    :P.status==='frontier'?'STATUS / ACTIVE OPERATION'
+    :'STATUS / OPERATION LOCKED';
+  document.title=P.opName+' — Operation Map';
+  /* capture feedback */
+  const nowDone=new Set(P.minis.filter(m=>m.done).map(m=>m.id));
+  if(!wasFirst){
+    nowDone.forEach(id=>{if(!prevDone.has(id)){const m=P.minis.find(x=>x.id===id);toast(`Objective taken — ${m.text}. +50 XP`,'success');snd('capture')}});
+    prevDone.forEach(id=>{if(!nowDone.has(id)){const m=P.minis.find(x=>x.id===id);if(m){toast(`Objective yielded — ${m.text}.`,'warn');snd('delete')}}});
+  }
+  prevDone=nowDone;
+  firstRender=false;
+}
+window.addEventListener('message',e=>{
+  if(e.source!==parent)return;
+  if(location.protocol!=='file:'&&e.origin!==location.origin)return;
+  const d=e.data;
+  if(!d||d.opmap!==true)return;
+  if(d.type==='state')applyState(d.payload);
+});
+
+/* ---------- selection / modes ---------- */
+function select(id){
+  if(selectedId!==id&&document.activeElement===$('cityName'))$('cityName').blur();
+  if(selectedId){const n=cityNodes.get(selectedId);if(n)n.classList.remove('selected')}
+  selectedId=id;
+  if(id){const n=cityNodes.get(id);if(n)n.classList.add('selected')}
+  renderCharter();
+}
+function setMode(m){
+  mode=m;
+  $('modeSelect').classList.toggle('active',m==='select');
+  $('modeAdd').classList.toggle('active',m==='add');
+  $('modeSelect').setAttribute('aria-pressed',String(m==='select'));
+  $('modeAdd').setAttribute('aria-pressed',String(m==='add'));
+  $('btnAddObj').textContent=m==='add'?'Cancel placement':'+  Add objective';
+  $('stage').classList.toggle('placing',m==='add');
+  svg.classList.toggle('adding',m==='add');
+  ghostG.style.display=m==='add'?'block':'none';
+  $('hintText').innerHTML=m==='add'
+    ?(window.innerWidth<=760?'Tap the map to place an objective. Use Cancel placement to exit.':'Click the map to place a new objective · drag to pan · <kbd>Esc</kbd> or right-click to cancel')
+    :'<kbd>Drag</kbd> pan · <kbd>Scroll</kbd> zoom · click a marker to inspect · complete it via Command controls · <kbd>2×click</kbd> rename';
+  if(m==='add'){updateGhost();setMobileTools(false)}
+}
+function updateGhost(){
+  const s=settings.cityScale;
+  ghostG.innerHTML=`<g transform="scale(${s})"><circle class="sel-ring" cx="0" cy="-29" r="31"/>${markerMarkup({kind:'mini',done:false,faction:'red'})}</g>`;
+}
+
+/* ---------- placing / mutations (bridge to parent) ---------- */
+function addObjectiveAt(x,y){
+  if(!P||!P.interactive){toast('This operation\'s map is sealed — only the front of advance can be shaped.','warn');snd('error');return}
+  const temp={id:'tmp_'+Date.now(),kind:'mini',mid:null,name:'Objective '+(P.minis.length+1),type:'village',faction:'red',
+    x:clamp(x,340,W-40),y:clamp(y,60,H-30),star:false,done:false};
+  CITIES.splice(CITIES.length-1,0,temp);   /* before the capital */
+  const g=cityNode(temp,0);g.classList.remove('enter');
+  renderRoutes();renderMinimap();
+  select(temp.id);
+  openRename(temp);
+}
+function commitTempObjective(c){
+  post('add',{text:c.name,x:Math.round(c.x),y:Math.round(c.y)});
+  toast(`Objective placed — "${c.name}".`,'success');snd('place');
+  setMode('select');
+}
+function dropTempObjective(c){
+  const i=CITIES.indexOf(c);if(i>=0)CITIES.splice(i,1);
+  if(selectedId===c.id)selectedId=null;
+  const n=cityNodes.get(c.id);if(n)n.remove();cityNodes.delete(c.id);
+  renderRoutes();renderMinimap();renderCharter();
+}
+
+/* ---------- inline rename ---------- */
+const renameInput=$('renameInput');
+function openRename(c){
+  if(!c||c.kind!=='mini'||!P||!P.interactive)return;
+  renameCityId=c.id;renameCancel=false;
+  renameInput.value=c.name;renameInput.style.display='block';
+  positionRename();renameInput.focus();renameInput.select();
+}
+function positionRename(){
+  if(!renameCityId)return;
+  const c=CITIES.find(x=>x.id===renameCityId);if(!c)return;
+  const m=svg.getScreenCTM();if(!m)return;
+  const p=new DOMPoint(c.x,c.y-66*settings.cityScale).matrixTransform(m);
+  renameInput.style.left=clamp(p.x-98,8,window.innerWidth-206)+'px';
+  renameInput.style.top=clamp(p.y-20,8,window.innerHeight-50)+'px';
+}
+function closeRename(cancel){
+  if(!renameCityId)return;
+  const c=CITIES.find(x=>x.id===renameCityId), val=renameInput.value;
+  renameCityId=null;renameInput.style.display='none';
+  if(!c)return;
+  const isTemp=String(c.id).startsWith('tmp_');
+  const name=val.trim().slice(0,60);
+  if(cancel||!name){
+    if(isTemp){dropTempObjective(c);setMode('select')}
+    if(!cancel){toast('An objective needs a name.','warn');snd('error')}
+    return;
+  }
+  const changed=name!==c.name;
+  c.name=name;
+  const node=cityNodes.get(c.id);
+  if(node){node.querySelector('.city-label').textContent=name;node.setAttribute('aria-label',`${name} — ${c.done?'taken':'objective'}`)}
+  if(isTemp){commitTempObjective(c);return}
+  if(changed&&c.mid){post('rename',{miniId:c.mid,text:name});snd('rename')}
+  renderCharter();
+}
+renameInput.addEventListener('keydown',e=>{
+  e.stopPropagation();
+  if(e.key==='Enter')closeRename(false);
+  else if(e.key==='Escape'){renameCancel=true;closeRename(true);dropTempIfAny()}
+});
+renameInput.addEventListener('blur',()=>{if(!renameCancel){closeRename(false)}renameCancel=false});
+function dropTempIfAny(){
+  CITIES.filter(c=>String(c.id).startsWith('tmp_')).forEach(dropTempObjective);
+}
+
+/* ---------- view / camera ---------- */
+function maxViewWidth(){
+  const r=svg.getBoundingClientRect();
+  return Math.min(8000,Math.max(2600,r.width?W*r.height/r.width*W/H+40:2600));
+}
+function defaultView(){
+  const r=svg.getBoundingClientRect();
+  const w=r.width&&r.height>r.width?2000:W;
+  const h=w*H/W;return {x:(W-w)/2,y:(H-h)/2,w,h};
+}
+function clampView(){
+  view.w=clamp(view.w,380,maxViewWidth());view.h=view.w*H/W;
+  const xmax=W+350-view.w,ymax=H+250-view.h;
+  view.x=xmax< -350?(W-view.w)/2:clamp(view.x,-350,xmax);
+  view.y=ymax< -250?(H-view.h)/2:clamp(view.y,-250,ymax);
+}
+function applyView(){
+  clampView();
+  svg.setAttribute('viewBox',`${view.x} ${view.y} ${view.w} ${view.h}`);
+  updateMiniRect();positionRename();
+}
+function scheduleView(){if(!viewRaf)viewRaf=requestAnimationFrame(()=>{viewRaf=0;applyView()})}
+function toMap(cx,cy){const m=svg.getScreenCTM();if(!m)return{x:800,y:450};return new DOMPoint(cx,cy).matrixTransform(m.inverse())}
+function zoomAt(factor,cx,cy){
+  cancelAnimationFrame(tweenRaf);
+  const before=toMap(cx,cy);
+  view.w=clamp(view.w/factor,380,maxViewWidth());view.h=view.w*H/W;
+  clampView();svg.setAttribute('viewBox',`${view.x} ${view.y} ${view.w} ${view.h}`);
+  const after=toMap(cx,cy);
+  view.x+=before.x-after.x;view.y+=before.y-after.y;
+  applyView();
+}
+function zoomCenter(factor){const r=svg.getBoundingClientRect();zoomAt(factor,r.left+r.width/2,r.top+r.height/2)}
+function tweenViewTo(target,ms){
+  cancelAnimationFrame(tweenRaf);
+  const from={x:view.x,y:view.y,w:view.w,h:view.h},t0=performance.now();
+  (function step(t){
+    const k=clamp((t-t0)/ms,0,1),e=1-Math.pow(1-k,3);
+    view.x=from.x+(target.x-from.x)*e;view.y=from.y+(target.y-from.y)*e;
+    view.w=from.w+(target.w-from.w)*e;view.h=view.w*H/W;
+    applyView();
+    if(k<1)tweenRaf=requestAnimationFrame(step);
+  })(t0);
+}
+function focusCity(c){const w=760;tweenViewTo({x:c.x-w/2,y:c.y-w*H/W/2,w,h:w*H/W},300)}
+function resetView(){tweenViewTo(defaultView(),300)}
+function updateMiniRect(){
+  const m=svg.getScreenCTM();if(!m)return;
+  const r=svg.getBoundingClientRect();
+  const p1=new DOMPoint(r.left,r.top).matrixTransform(m.inverse());
+  const p2=new DOMPoint(r.right,r.bottom).matrixTransform(m.inverse());
+  const x=clamp(p1.x,0,W),y=clamp(p1.y,0,H),x2=clamp(p2.x,0,W),y2=clamp(p2.y,0,H);
+  const mv=$('miniView');
+  mv.setAttribute('x',x);mv.setAttribute('y',y);mv.setAttribute('width',Math.max(20,x2-x));mv.setAttribute('height',Math.max(20,y2-y));
+}
+
+/* ---------- pointer interaction ---------- */
+const pointers=new Map();
+let gesture=null;
+svg.addEventListener('pointerdown',e=>{
+  if(e.button===2)return;
+  audio();
+  cancelAnimationFrame(tweenRaf);
+  pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  try{svg.setPointerCapture(e.pointerId)}catch(err){}
+  if(pointers.size===2){
+    const pts=[...pointers.values()];
+    gesture={kind:'pinch',d0:Math.hypot(pts[0].x-pts[1].x,pts[0].y-pts[1].y),w0:view.w,
+      c0:toMap((pts[0].x+pts[1].x)/2,(pts[0].y+pts[1].y)/2)};
+    return;
+  }
+  let cityEl=e.target.closest&&e.target.closest('.city');
+  // Keep marker targets usable on touchscreens when the overview is zoomed out.
+  if(!cityEl&&e.pointerType==='touch'&&mode==='select'){
+    const m=svg.getScreenCTM();let nearest=null,best=24;
+    if(m)CITIES.forEach(c=>{const pt=new DOMPoint(c.x,c.y-29*settings.cityScale).matrixTransform(m);const d=Math.hypot(pt.x-e.clientX,pt.y-e.clientY);if(d<best){best=d;nearest=c}});
+    if(nearest)cityEl=cityNodes.get(nearest.id);
+  }
+  const p=toMap(e.clientX,e.clientY);
+  if(cityEl&&mode==='select'){
+    const id=cityEl.getAttribute('data-id');
+    const c=CITIES.find(x=>x.id===id);
+    if(!c)return;
+    select(id);snd('tick');
+    gesture={kind:'city',id,ox:p.x-c.x,oy:p.y-c.y,originalX:c.x,originalY:c.y,sx:e.clientX,sy:e.clientY,moved:false,locked:!P||!P.interactive};
+  }else{
+    gesture={kind:'maybe',sx:e.clientX,sy:e.clientY,vx:view.x,vy:view.y,moved:false};
+  }
+});
+svg.addEventListener('pointermove',e=>{
+  const p=toMap(e.clientX,e.clientY);
+  $('miniCoords').textContent=`SECTOR ${sectorOf(p.x,p.y)} · ${Math.round(clamp(p.x,0,W))}, ${Math.round(clamp(p.y,0,H))}`;
+  if(pointers.has(e.pointerId))pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(mode==='add'){ghostG.setAttribute('transform',`translate(${p.x},${p.y})`)}
+  if(!gesture){handleHover(e);return}
+  if(gesture.kind==='pinch'&&pointers.size===2){
+    const pts=[...pointers.values()];
+    const d=Math.hypot(pts[0].x-pts[1].x,pts[0].y-pts[1].y);
+    const cx=(pts[0].x+pts[1].x)/2,cy=(pts[0].y+pts[1].y)/2;
+    view.w=clamp(gesture.w0*gesture.d0/Math.max(30,d),380,maxViewWidth());view.h=view.w*H/W;
+    clampView();svg.setAttribute('viewBox',`${view.x} ${view.y} ${view.w} ${view.h}`);
+    const now=toMap(cx,cy);
+    view.x+=gesture.c0.x-now.x;view.y+=gesture.c0.y-now.y;
+    scheduleView();hideTooltip();
+    return;
+  }
+  const dx=e.clientX-gesture.sx,dy=e.clientY-gesture.sy;
+  if(gesture.kind==='city'){
+    if(gesture.locked)return;
+    if(!gesture.moved&&Math.hypot(dx,dy)>4){gesture.moved=true;const n=cityNodes.get(gesture.id);if(n)n.classList.add('dragging');hideTooltip()}
+    if(gesture.moved){
+      const c=CITIES.find(x=>x.id===gesture.id);if(!c)return;
+      c.x=clamp(p.x-gesture.ox,340,W-40);c.y=clamp(p.y-gesture.oy,60,H-30);
+      const n=cityNodes.get(c.id);if(n)n.setAttribute('transform',`translate(${c.x},${c.y})`);
+      const dot=miniDots.get(c.id);if(dot){dot.setAttribute('cx',c.x);dot.setAttribute('cy',c.y)}
+      if(!gesture.raf){const activeGesture=gesture;gesture.raf=requestAnimationFrame(()=>{activeGesture.raf=0;renderRoutes();renderCharter()})}
+    }
+    return;
+  }
+  if(gesture.kind==='maybe'||gesture.kind==='pan'){
+    if(!gesture.moved&&Math.hypot(dx,dy)>6){gesture.moved=true;gesture.kind='pan';svg.classList.add('panning');hideTooltip()}
+    if(gesture.kind==='pan'){
+      const m=svg.getScreenCTM();if(!m)return;
+      view.x=gesture.vx-dx/m.a;view.y=gesture.vy-dy/m.d;
+      scheduleView();
+    }
+  }
+});
+function endPointer(e){
+  pointers.delete(e.pointerId);
+  if(!gesture)return;
+  if(e.type==='pointercancel'){
+    if(gesture.kind==='city'&&gesture.moved){const c=CITIES.find(x=>x.id===gesture.id);if(c){c.x=gesture.originalX;c.y=gesture.originalY;const n=cityNodes.get(c.id);if(n){n.classList.remove('dragging');n.setAttribute('transform',`translate(${c.x},${c.y})`)}renderRoutes();renderMinimap();renderCharter()}}
+    svg.classList.remove('panning');gesture=null;return;
+  }
+  if(gesture.kind==='pinch'){if(pointers.size<2)gesture=null;return}
+  if(gesture.kind==='city'){
+    const n=cityNodes.get(gesture.id);if(n)n.classList.remove('dragging');
+    const c=CITIES.find(x=>x.id===gesture.id);
+    if(gesture.locked){gesture=null;return}
+    if(gesture.moved){
+      renderRoutes();renderListAfterMove(c);
+    }else if(c){
+      scheduleMarkerAction(c,e); /* distinguish a mouse double-click to rename */
+    }
+    gesture=null;return;
+  }
+  if(gesture.kind==='maybe'&&!gesture.moved){
+    const p=toMap(e.clientX,e.clientY);
+    if(mode==='add')addObjectiveAt(p.x,p.y);
+    else select(null);
+  }
+  svg.classList.remove('panning');
+  gesture=null;
+}
+function renderListAfterMove(c){
+  if(c&&c.kind==='mini'&&c.mid)post('move',{miniId:c.mid,x:Math.round(c.x),y:Math.round(c.y)});
+  else if(c&&(c.kind==='post'||c.kind==='capital'))post('move-anchor',{anchor:c.kind,x:Math.round(c.x),y:Math.round(c.y)});
+  renderCharter();
+}
+function scheduleMarkerAction(c,e){
+  if(e.pointerType!=='mouse'||c.kind!=='mini'){interactWith(c);return}
+  if(clickTimer){
+    clearTimeout(clickTimer);clickTimer=null;
+    if(clickTarget===c.id){clickTarget=null;select(c.id);openRename(c);return}
+    const prev=CITIES.find(x=>x.id===clickTarget);if(prev)interactWith(prev);
+  }
+  clickTarget=c.id;clickTimer=setTimeout(()=>{clickTimer=null;const target=CITIES.find(x=>x.id===clickTarget);clickTarget=null;if(target)interactWith(target)},500);
+}
+function interactWith(c){
+  if(String(c.id).startsWith('tmp_'))return;
+  /* clicks select only — completing objectives and declaring victory happen through Command controls */
+  if(c.kind==='capital'&&P&&P.interactive){
+    if(allDone())toast('All objectives taken — declare the mission complete from Command controls.','info');
+    else{
+      const left=P.minis.filter(m=>!m.done).length;
+      toast(`${left} objective${left>1?'s':''} still untaken.`,'warn');snd('error');
+    }
+  }else if(c.kind==='post'){
+    toast('Your forward post — the advance starts here.','info');
+  }
+}
+svg.addEventListener('pointerup',endPointer);
+svg.addEventListener('pointercancel',endPointer);
+svg.addEventListener('pointerleave',()=>{hideTooltip();if(mode==='add')ghostG.style.display='none'});
+svg.addEventListener('pointerenter',()=>{if(mode==='add')ghostG.style.display='block'});
+svg.addEventListener('dblclick',e=>{
+  const cityEl=e.target.closest&&e.target.closest('.city');
+  if(cityEl&&mode==='select'){
+    const c=CITIES.find(x=>x.id===cityEl.getAttribute('data-id'));
+    if(c&&c.kind==='mini'){if(clickTimer){clearTimeout(clickTimer);clickTimer=null;clickTarget=null}select(c.id);if(renameCityId!==c.id)openRename(c)}
+  }
+});
+svg.addEventListener('focusin',e=>{const n=e.target.closest&&e.target.closest('.city');if(n)select(n.getAttribute('data-id'))});
+svg.addEventListener('keydown',e=>{
+  const n=e.target.closest&&e.target.closest('.city');if(!n)return;
+  const c=CITIES.find(x=>x.id===n.getAttribute('data-id'));if(!c)return;
+  if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();select(c.id);interactWith(c)}
+  else if(e.key==='F2'&&c.kind==='mini'){e.preventDefault();e.stopPropagation();openRename(c)}
+});
+svg.addEventListener('contextmenu',e=>{
+  e.preventDefault();
+  if(mode==='add')setMode('select');else select(null);
+});
+svg.addEventListener('wheel',e=>{
+  e.preventDefault();
+  zoomAt(e.deltaY<0?1.13:1/1.13,e.clientX,e.clientY);
+},{passive:false});
+
+/* ---------- tooltip ---------- */
+const tooltip=$('tooltip');
+function handleHover(e){
+  if(mode==='add'||(gesture&&gesture.moved)){hideTooltip();return}
+  const cityEl=e.target.closest&&e.target.closest('.city');
+  if(!cityEl){hideTooltip();return}
+  const c=CITIES.find(x=>x.id===cityEl.getAttribute('data-id'));
+  if(!c){hideTooltip();return}
+  const stateTxt=c.kind==='mini'?(c.done?'TAKEN — ground held · click to yield':(c.isTarget?'◎ CURRENT TARGET — click to take':'+50 XP — click to take'))
+    :c.kind==='post'?'Your staging point':'★ Operation target — declare victory here';
+  tooltip.innerHTML=`<div class="tn">${esc(c.name)}${c.star?' <span style="color:var(--amber)">★</span>':''}</div>
+    <div class="tm"><span class="dot" style="background:${c.kind==='mini'&&!c.done?(c.isTarget?'#ff5a4d':'#f08a80'):c.kind==='capital'?'#9cddff':'#64d7c6'}"></span>${stateTxt}</div>
+    ${c.kind==='mini'&&c.plan?`<div class="th" style="max-height:66px;overflow:hidden">PLAN: ${esc(c.plan)}</div>`:''}
+    <div class="th">${c.kind==='mini'?(P.interactive?'Click to act · double-click to rename · drag to move':'Select to inspect'):'Fixed anchor · select to inspect'}</div>`;
+  tooltip.classList.add('show');
+  const tw=tooltip.offsetWidth,th=tooltip.offsetHeight;
+  tooltip.style.left=clamp(e.clientX+16,8,window.innerWidth-tw-8)+'px';
+  tooltip.style.top=clamp(e.clientY+14,8,window.innerHeight-th-8)+'px';
+}
+function hideTooltip(){tooltip.classList.remove('show')}
+
+/* ---------- minimap ---------- */
+const mini=$('minimap');
+let miniDrag=false;
+function miniJump(e){
+  const r=mini.getBoundingClientRect();
+  const x=(e.clientX-r.left)/r.width*W,y=(e.clientY-r.top)/r.height*H;
+  view.x=x-view.w/2;view.y=y-view.h/2;applyView();
+}
+mini.addEventListener('pointerdown',e=>{miniDrag=true;try{mini.setPointerCapture(e.pointerId)}catch(err){}miniJump(e)});
+mini.addEventListener('pointermove',e=>{if(miniDrag)miniJump(e)});
+mini.addEventListener('pointerup',()=>miniDrag=false);
+mini.addEventListener('pointercancel',()=>miniDrag=false);
+
+/* ---------- settings ---------- */
+function applySettings(){
+  svg.style.setProperty('--glow',settings.glow);
+  svg.dataset.atmo=settings.atmo;
+  svg.classList.toggle('hide-banners',!settings.banners);
+  svg.classList.toggle('hide-labels',!settings.labels);
+  roadsG.style.display=settings.roads?'block':'none';
+  routesG.style.display=settings.routes?'block':'none';
+  $('gridRect').style.display=settings.grid?'block':'none';
+  cityNodes.forEach(n=>{
+    n.querySelector('.scale').setAttribute('transform',`scale(${settings.cityScale})`);
+    n.querySelector('.city-label').setAttribute('font-size',(15*settings.labelSize).toFixed(1));
+  });
+  renderRoutes();updateGhost();
+  $('setScale').value=settings.cityScale;$('setScaleVal').textContent=Number(settings.cityScale).toFixed(2);
+  $('setLabel').value=settings.labelSize;$('setLabelVal').textContent=Number(settings.labelSize).toFixed(2);
+  $('setGlow').value=settings.glow;$('setGlowVal').textContent=Number(settings.glow).toFixed(2);
+  $('tglBanners').checked=settings.banners;$('tglLabels').checked=settings.labels;$('tglRoads').checked=settings.roads;
+  $('tglRoutes').checked=settings.routes;$('tglGrid').checked=settings.grid;$('setAtmo').value=settings.atmo;
+  const sb=$('soundBtn');sb.classList.toggle('muted',!settings.sound);sb.setAttribute('aria-pressed',String(settings.sound));
+}
+function bindSetting(id,key,parse){
+  $(id).addEventListener('input',e=>{
+    settings[key]=parse?parse(e.target):e.target.checked;
+    applySettings();settingsSave();
+  });
+}
+
+/* ---------- UI bindings ---------- */
+function setMobileTools(open){
+  const tools=$('tools'),button=$('mobileToolsBtn');
+  tools.classList.toggle('expanded',open);button.setAttribute('aria-expanded',String(open));button.textContent=open?'CLOSE ↓':'OPEN ↑';
+}
+$('mobileToolsBtn').addEventListener('click',()=>setMobileTools(!$('tools').classList.contains('expanded')));
+$('backBtn').addEventListener('click',()=>post('close'));
+$('btnDeclare').addEventListener('click',()=>{if(P&&P.interactive&&allDone())post('declare')});
+$('btnAddObj').addEventListener('click',()=>{setMode(mode==='add'?'select':'add');snd('tick')});
+$('modeSelect').addEventListener('click',()=>{setMode('select');snd('tick')});
+$('modeAdd').addEventListener('click',()=>{setMode(mode==='add'?'select':'add');snd('tick')});
+function syncCityName(c,name){
+  const n=cityNodes.get(c.id);
+  if(n){n.querySelector('.city-label').textContent=name;n.setAttribute('aria-label',`${name} — ${c.done?'taken':'objective'}`)}
+}
+$('cityName').addEventListener('focus',()=>{
+  const c=CITIES.find(x=>x.id===selectedId);nameEditSnapshot=c?{id:c.id,original:c.name}:null;
+});
+$('cityName').addEventListener('input',e=>{
+  const c=nameEditSnapshot&&CITIES.find(x=>x.id===nameEditSnapshot.id);if(!c||c.kind!=='mini')return;
+  syncCityName(c,e.target.value.trim()?e.target.value:nameEditSnapshot.original);
+});
+$('cityName').addEventListener('change',e=>{
+  const snapshot=nameEditSnapshot;nameEditSnapshot=null;if(!snapshot)return;
+  const c=CITIES.find(x=>x.id===snapshot.id);if(!c||c.kind!=='mini')return;
+  const name=e.target.value.trim().slice(0,60);
+  if(!name){e.target.value=snapshot.original;syncCityName(c,snapshot.original);toast('An objective needs a name.','warn');return}
+  c.name=name;e.target.value=name;syncCityName(c,name);
+  if(name!==snapshot.original){
+    snd('rename');
+    if(String(c.id).startsWith('tmp_'))commitTempObjective(c);
+    else if(c.mid)post('rename',{miniId:c.mid,text:name});
+  }
+  renderCharter();
+});
+$('cityName').addEventListener('keydown',e=>{
+  e.stopPropagation();
+  if(e.key==='Escape'){
+    if(nameEditSnapshot){const c=CITIES.find(x=>x.id===nameEditSnapshot.id);if(c)syncCityName(c,nameEditSnapshot.original);e.target.value=nameEditSnapshot.original;nameEditSnapshot=null}
+    e.target.blur();
+  }else if(e.key==='Enter')e.target.blur();
+});
+$('btnFocus').addEventListener('click',()=>{const c=CITIES.find(x=>x.id===selectedId);if(c){focusCity(c);snd('tick')}});
+let planTimer=null;
+$('planBox').addEventListener('input',e=>{
+  if(planTimer)clearTimeout(planTimer);
+  const val=e.target.value;
+  planTimer=setTimeout(()=>{
+    const c=CITIES.find(x=>x.id===selectedId);
+    if(c&&c.kind==='mini'&&c.mid){c.plan=val;post('plan',{miniId:c.mid,text:val})}
+  },450);
+});
+$('planBox').addEventListener('keydown',e=>e.stopPropagation());
+$('btnComplete').addEventListener('click',()=>{
+  const c=CITIES.find(x=>x.id===selectedId);
+  if(!c||c.kind!=='mini'||!c.mid||!P||!P.interactive)return;
+  post('toggle',{miniId:c.mid});
+  snd(c.done?'delete':'place');
+});
+$('btnTarget').addEventListener('click',()=>{
+  const c=CITIES.find(x=>x.id===selectedId);
+  if(!c||c.kind!=='mini'||!c.mid||!P||!P.interactive||c.done)return;
+  post('target',{miniId:c.mid,on:P.targetMiniId!==c.mid});
+  snd('tick');
+});
+$('btnDelete').addEventListener('click',()=>{
+  const c=CITIES.find(x=>x.id===selectedId);
+  if(!c||c.kind!=='mini')return;
+  if(String(c.id).startsWith('tmp_')){dropTempObjective(c);return}
+  post('delete',{miniId:c.mid});
+  selectedId=null;
+  snd('delete');
+});
+$('zoomIn').addEventListener('click',()=>{zoomCenter(1.25);snd('tick')});
+$('zoomOut').addEventListener('click',()=>{zoomCenter(1/1.25);snd('tick')});
+$('zoomHome').addEventListener('click',()=>{resetView();snd('tick')});
+$('soundBtn').addEventListener('click',()=>{
+  settings.sound=!settings.sound;applySettings();settingsSave();
+  if(settings.sound)snd('tick');
+  toast(settings.sound?'Sound enabled.':'Sound muted.','info');
+});
+
+/* ---------- keyboard ---------- */
+window.addEventListener('keydown',e=>{
+  const tag=(document.activeElement&&document.activeElement.tagName)||'';
+  const typing=tag==='INPUT'||tag==='SELECT'||tag==='TEXTAREA';
+  if(e.key==='Escape'){
+    if(renameCityId){renameCancel=true;closeRename(true);dropTempIfAny()}
+    else if(typing)document.activeElement.blur();
+    else if(mode==='add')setMode('select');
+    else select(null);
+    return;
+  }
+  if(typing)return;
+  switch(e.key){
+    case 'n':case 'N':if(P&&P.interactive){setMode(mode==='add'?'select':'add');snd('tick')}break;
+    case 'Delete':case 'Backspace':{const c=CITIES.find(x=>x.id===selectedId);if(c&&c.kind==='mini'){e.preventDefault();$('btnDelete').click()}break}
+    case '+':case '=':zoomCenter(1.2);break;
+    case '-':case '_':zoomCenter(1/1.2);break;
+    case '0':resetView();break;
+  }
+});
+window.addEventListener('resize',()=>{updateMiniRect();positionRename()});
+
+/* ---------- init ---------- */
+settings=settingsLoad();
+bindSetting('setScale','cityScale',t=>parseFloat(t.value));
+bindSetting('setLabel','labelSize',t=>parseFloat(t.value));
+bindSetting('setGlow','glow',t=>parseFloat(t.value));
+bindSetting('tglBanners','banners');bindSetting('tglLabels','labels');
+bindSetting('tglRoads','roads');bindSetting('tglRoutes','routes');bindSetting('tglGrid','grid');
+$('setAtmo').addEventListener('change',e=>{settings.atmo=e.target.value;applySettings();settingsSave();snd('tick')});
+applySettings();
+if(window.innerWidth/window.innerHeight<0.9)view=defaultView();
+applyView();
+setMode('select');
+post('ready');
+})();
+</script>
+</body>
+</html>
